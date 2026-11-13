@@ -52,8 +52,10 @@ input, select, textarea { font: inherit; color: var(--text); }
 .logo { font-size: 30px; }
 .brand-text { min-width: 0; }
 #title-text { font-weight: 700; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; }
-#save-state { font-size: 13px; color: var(--ok); }
+#save-state, #cloud-state { font-size: 13px; color: var(--ok); }
+#cloud-state.warn { color: #d97706; }
 #save-state.warn { color: var(--danger); font-weight: 700; }
+.tb.warn { border-color: #f59e0b; background: #fffbeb; }
 .tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .tb {
   display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
@@ -296,3 +298,14 @@ body.presenting #zoom-ctl { bottom: 96px; }
 .ai-guide .say { display: inline-block; margin-top: 4px; background: var(--pri-soft); border-radius: 10px; padding: 6px 12px; font-size: 15px; }
 .ai-guide textarea.code { min-height: 140px; }
 @media (max-width: 1280px) { .tb { min-width: 56px; padding: 4px 6px; font-size: 13px; } }
+
+/* ---------- 雲端 ---------- */
+.cloud-list { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.cloud-row { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 6px 6px 6px 14px; background: var(--soft); }
+.cloud-row .cn { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-row .cs { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.cloud-row .btn { min-height: 42px; padding: 0 14px; }
+.cloud-first { background: var(--pri-soft); border-radius: 12px; padding: 12px 14px; line-height: 2; }
+details.howto { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: var(--soft); }
+details.howto summary { font-weight: 700; cursor: pointer; }
+.help a { color: var(--pri); word-break: break-all; }
