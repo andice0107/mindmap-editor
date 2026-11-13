@@ -81,6 +81,7 @@ function normHex(h) {
 let state = { projects: [], activeId: null };
 let P = null;                 // 目前畫布
 let selNodes = new Set();     // 選取的方塊
+let selLinks = new Set();     // 多選時一起選到的自由連結線
 let selLink = null;           // 選取的連結線 id
 let view = { x: 0, y: 0, z: 1 };
 let drawMode = false, multiMode = false, boxMode = false;
@@ -388,6 +389,7 @@ function buildSVG(opts = {}) {
     if (!c.parentId || c.hideLine) continue;
     const p = N(c.parentId);
     if (!p || !vis.has(p.id)) continue;
+    if (opts.only && !(opts.only.nodes.has(c.id) && opts.only.nodes.has(p.id))) continue;
     const st = tlineStyle(p, c);
     const col = opts.mono ? '#334155' : normHex(st.color);
     let attrs = `stroke="${col}" stroke-width="${st.width}" fill="none" stroke-linecap="round"`;
@@ -406,6 +408,7 @@ function buildSVG(opts = {}) {
   P.links.forEach(l => {
     if ((l.a.node && !vis.has(l.a.node)) || (l.b.node && !vis.has(l.b.node))) return;
     if (presenting && pState && !pState.showLinks) return;
+    if (opts.only && !opts.only.links.has(l.id)) return;
     const g = linkGeom(l);
     const col = normHex(l.color || '#475569'), w = l.width || 3;
     let attrs = `stroke="${col}" stroke-width="${w}" fill="none" stroke-linecap="round"`;
@@ -424,6 +427,7 @@ function buildSVG(opts = {}) {
   });
   // 方塊
   for (const id of vis) {
+    if (opts.only && !opts.only.nodes.has(id)) continue;
     const n = N(id);
     const b = nodeBox(n);
     const x = PX(n), y = PY(n), w = n.width, h = n.height;
@@ -504,6 +508,19 @@ function render() {
   applyView();
   updateChrome();
 }
+// 多選的線：記下自由端點的起始位置，拖動時一起移動（接在方塊上的端點會跟著方塊）
+function linkEndsSnapshot() {
+  const o = {};
+  selLinks.forEach(id => { const l = P.links.find(k => k.id === id); if (l) o[id] = { a: { ...l.a }, b: { ...l.b } }; });
+  return o;
+}
+function moveLinkEnds(snap, dx, dy) {
+  if (!snap) return;
+  for (const id in snap) {
+    const l = P.links.find(k => k.id === id); if (!l) continue;
+    ['a', 'b'].forEach(k => { if (!snap[id][k].node) l[k] = { node: null, x: snap[id][k].x + dx, y: snap[id][k].y + dy }; });
+  }
+}
 const GRID = 24;
 function gridMode() { return P.grid === 'lines' ? 'lines' : P.grid ? 'dots' : 'off'; }
 const gsnap = v => Math.round(v / GRID) * GRID;
@@ -564,6 +581,13 @@ function uiLayer(vis) {
       s += `<g data-resize="${n.id}" class="handle"><rect x="${r.x + r.w - hs / 2}" y="${r.y + r.h - hs / 2}" width="${hs}" height="${hs}" rx="${4 / z}" fill="#4f46e5" stroke="#fff" stroke-width="${2 / z}"/><rect x="${r.x + r.w - hs}" y="${r.y + r.h - hs}" width="${hs * 2}" height="${hs * 2}" fill="transparent"/></g>`;
     }
   }
+  selLinks.forEach(id => {
+    const l = P.links.find(k => k.id === id); if (!l) return;
+    if ((l.a.node && !vis.has(l.a.node)) || (l.b.node && !vis.has(l.b.node))) return;
+    const g = linkGeom(l);
+    s += `<path d="${g.d}" stroke="#4f46e5" stroke-width="${(l.width || 3) + 8 / z}" stroke-opacity=".3" fill="none" pointer-events="none"/>`;
+    s += `<path d="${g.d}" stroke="#4f46e5" stroke-width="${2 / z}" stroke-dasharray="${6 / z},${4 / z}" fill="none" pointer-events="none"/>`;
+  });
   if (selLink && selLink.startsWith('T:')) {
     const c = N(selLink.slice(2)), p = c && N(c.parentId);
     if (c && p && vis.has(c.id) && vis.has(p.id)) {
@@ -694,7 +718,7 @@ function commit() {
 function restore(s) {
   const d = JSON.parse(s);
   Object.assign(P, d);
-  selNodes.clear(); selLink = null; LAY.clear();
+  (selNodes.clear(), selLinks.clear()); selLink = null; LAY.clear();
   layoutAndRender(); syncPanel(); renderTabs(); scheduleSave();
 }
 function undo() { if (hi > 0) { hi--; restore(hist[hi]); } }
@@ -732,14 +756,14 @@ function switchProject(id) {
   finishEdit();
   state.activeId = id;
   P = state.projects.find(p => p.id === id);
-  selNodes.clear(); selLink = null; LAY.clear();
+  (selNodes.clear(), selLinks.clear()); selLink = null; LAY.clear();
   autoLayout(false); resetHistory(); renderTabs(); syncPanel(); fitView(false); scheduleSave();
 }
 function addProject(p, keepOffsets) {
   if (Object.values(p.nodes).some(n => n.zhuyin)) loadZhuyin();
   state.projects.push(p);
   state.activeId = p.id; P = p;
-  selNodes.clear(); selLink = null; LAY.clear();
+  (selNodes.clear(), selLinks.clear()); selLink = null; LAY.clear();
   if (p.palette) applyPalette(p.palette, true);
   autoLayout(!keepOffsets); resetHistory(); renderTabs(); syncPanel(); fitView(false); scheduleSave();
 }
@@ -828,7 +852,7 @@ function afterAdd(n) {
   const fp = n.parentId && N(n.parentId) && isFree(N(n.parentId));
   autoLayout(false);
   if (fp) layoutFreeSubtree(N(n.parentId));
-  selNodes = new Set([n.id]); selLink = null;
+  selLinks.clear(), selNodes = new Set([n.id]); selLink = null;
   render(); commit(); syncPanel();
   ensureVisible(n);
   setTimeout(() => startEdit(n.id, true), 30);
@@ -846,12 +870,16 @@ function addFreeNode(x, y, size) {
   Object.assign(n, { x, y, shape: 'capsule', text: '新的框', borderColor: '#0ea5e9', fillColor: tintFill('#0ea5e9', 1), lineColor: '#0ea5e9', fontColor: textCol() });
   if (size) { n.customResized = true; n.width = Math.round(size.w); n.height = Math.round(size.h); }
   P.nodes[n.id] = n; nodeBox(n);
-  selNodes = new Set([n.id]); selLink = null;
+  selLinks.clear(), selNodes = new Set([n.id]); selLink = null;
   render(); commit(); syncPanel();
   setTimeout(() => startEdit(n.id, true), 30);
 }
 function deleteSelected(force) {
   if (selLink && selLink.startsWith('T:')) { deleteTreeLine(); return; }
+  if (selLinks.size) {
+    P.links = P.links.filter(l => !selLinks.has(l.id)); selLinks = new Set();
+    if (!selNodes.size || (selNodes.size === 1 && selNodes.has(P.rootId))) { selNodes = new Set(); render(); commit(); syncPanel(); return; }
+  }
   if (selLink) { P.links = P.links.filter(l => l.id !== selLink); selLink = null; render(); commit(); syncPanel(); return; }
   const ids = [...selNodes].filter(id => id !== P.rootId);
   if (!ids.length) { if (selNodes.has(P.rootId)) toast('中心主題不能刪除'); return; }
@@ -865,7 +893,7 @@ function deleteSelected(force) {
     all.forEach(id => delete P.nodes[id]);
     // 連到被刪除方塊的線：端點變成自由端
     P.links.forEach(l => ['a', 'b'].forEach(k => { if (l[k].node && all.has(l[k].node)) { l[k].node = null; } }));
-    selNodes.clear(); LAY.clear();
+    (selNodes.clear(), selLinks.clear()); LAY.clear();
     layoutAndRender(); commit(); syncPanel();
   };
   if (all.size > 3 && !force) confirmBox(`要刪除 ${all.size} 個方塊嗎？`, '包含底下所有的分支。刪錯了可以按「復原」救回來。', '刪除', doIt);
@@ -1023,11 +1051,12 @@ svg.addEventListener('pointermove', e => {
     case 'pan': view.x = gesture.vx + dx; view.y = gesture.vy + dy; applyView(); break;
     case 'node': {
       if (!gesture.dragIds) {
-        if (!selNodes.has(gesture.id)) { selNodes = new Set([gesture.id]); selLink = null; syncPanel(); }
+        if (!selNodes.has(gesture.id)) { selLinks.clear(), selNodes = new Set([gesture.id]); selLink = null; syncPanel(); }
         const set = new Set();
         selNodes.forEach(id => { set.add(id); descendants(id).forEach(d => set.add(d)); });
         gesture.dragIds = [...set];
         gesture.start = Object.fromEntries(gesture.dragIds.map(id => [id, { ox: N(id).offsetX || 0, oy: N(id).offsetY || 0 }]));
+        gesture.linkStart = linkEndsSnapshot();
       }
       const ddx = dx / view.z, ddy = dy / view.z;
       gesture.dragIds.forEach(id => { const n = N(id); n.offsetX = gesture.start[id].ox + ddx; n.offsetY = gesture.start[id].oy + ddy; });
@@ -1036,7 +1065,8 @@ svg.addEventListener('pointermove', e => {
         const sn = alignSnap(N(gesture.id), new Set(gesture.dragIds));
         if (sn.dx || sn.dy) gesture.dragIds.forEach(id => { const n = N(id); n.offsetX += sn.dx; n.offsetY += sn.dy; });
         gesture.guides = sn.guides;
-      }
+        moveLinkEnds(gesture.linkStart, ddx + sn.dx, ddy + sn.dy);
+      } else moveLinkEnds(gesture.linkStart, ddx, ddy);
       requestRender(); break;
     }
     case 'resize': {
@@ -1076,11 +1106,22 @@ svg.addEventListener('pointermove', e => {
     case 'link': {
       const l = !gesture.id.startsWith('T:') && P.links.find(k => k.id === gesture.id);
       if (!l) { gesture.type = 'pan'; gesture.vx = view.x - dx; gesture.vy = view.y - dy; break; }
+      if (selLinks.has(l.id) && (selLinks.size > 1 || selNodes.size)) {
+        if (!gesture.grp) {
+          const set = new Set(); selNodes.forEach(id => { set.add(id); descendants(id).forEach(d => set.add(d)); });
+          gesture.grp = { ids: [...set], start: Object.fromEntries([...set].map(id => [id, { ox: N(id).offsetX || 0, oy: N(id).offsetY || 0 }])), links: linkEndsSnapshot() };
+        }
+        let ddx = dx / view.z, ddy = dy / view.z;
+        if (gridMode() !== 'off' && !e.altKey) { const a0 = gesture.grp.links[l.id].a; const ax = (a0.x ?? 0) + ddx, ay = (a0.y ?? 0) + ddy; if (!l.a.node) { ddx += gsnap(ax) - ax; ddy += gsnap(ay) - ay; } }
+        gesture.grp.ids.forEach(id => { const n = N(id); n.offsetX = gesture.grp.start[id].ox + ddx; n.offsetY = gesture.grp.start[id].oy + ddy; });
+        moveLinkEnds(gesture.grp.links, ddx, ddy);
+        requestRender(); break;
+      }
       if (!gesture.o) {
         // 整條線拖動：接在方塊上的端點先變成自由端點（拖動就會分開）
         const g = linkGeom(l);
         gesture.o = { A: { ...g.A }, B: { ...g.B } };
-        selLink = l.id; selNodes.clear(); syncPanel();
+        selLink = l.id; (selNodes.clear(), selLinks.clear()); syncPanel();
       }
       const ddx = dx / view.z, ddy = dy / view.z;
       let A = { x: gesture.o.A.x + ddx, y: gesture.o.A.y + ddy }, B = { x: gesture.o.B.x + ddx, y: gesture.o.B.y + ddy };
@@ -1116,7 +1157,7 @@ function endPointer(e) {
   if (presenting) { if (!g.moved) presentTap(g.hit); return; }
   switch (g.type) {
     case 'pan':
-      if (!g.moved) { if (selNodes.size || selLink) { selNodes.clear(); selLink = null; render(); syncPanel(); } }
+      if (!g.moved) { if (selNodes.size || selLink || selLinks.size) { (selNodes.clear(), selLinks.clear()); selLink = null; render(); syncPanel(); } }
       break;
     case 'node':
       if (g.moved) {
@@ -1124,17 +1165,24 @@ function endPointer(e) {
         render(); commit();
       } else {
         const now = Date.now();
-        if (lastTap.id === g.id && now - lastTap.t < 380) { lastTap = { id: null, t: 0 }; selNodes = new Set([g.id]); render(); syncPanel(); startEdit(g.id); return; }
+        if (lastTap.id === g.id && now - lastTap.t < 380) { lastTap = { id: null, t: 0 }; selLinks.clear(), selNodes = new Set([g.id]); render(); syncPanel(); startEdit(g.id); return; }
         lastTap = { id: g.id, t: now };
-        if (g.shift || multiMode) { selNodes.has(g.id) ? selNodes.delete(g.id) : selNodes.add(g.id); }
-        else selNodes = new Set([g.id]);
+        if (g.shift || multiMode) { if (selLink && !selLink.startsWith('T:')) selLinks.add(selLink); selNodes.has(g.id) ? selNodes.delete(g.id) : selNodes.add(g.id); }
+        else selLinks.clear(), selNodes = new Set([g.id]);
         selLink = null; render(); syncPanel();
       }
       break;
     case 'resize': LAY.delete(g.id); render(); commit(); break;
     case 'toggle': if (!g.moved) toggleCollapse(g.hit.id); break;
     case 'link':
-      if (!g.moved) { selLink = g.id; selNodes.clear(); render(); syncPanel(); }
+      if (!g.moved && (g.shift || multiMode) && !g.id.startsWith('T:')) {
+        if (selLink && !selLink.startsWith('T:')) selLinks.add(selLink);
+        selLink = null;
+        selLinks.has(g.id) ? selLinks.delete(g.id) : selLinks.add(g.id);
+        render(); syncPanel();
+      }
+      else if (!g.moved) { selLink = g.id; (selNodes.clear(), selLinks.clear()); render(); syncPanel(); }
+      else if (g.grp) { render(); commit(); }
       else if (g.o) {
         const l = P.links.find(k => k.id === g.id);
         if (l && g.attach) Object.entries(g.attach).forEach(([k, nd]) => { l[k] = { node: nd, x: 0, y: 0 }; });
@@ -1167,7 +1215,7 @@ function endPointer(e) {
         b: endNode ? { node: endNode, x: 0, y: 0 } : { node: null, x: (g.endPt || w).x, y: (g.endPt || w).y },
         color: '#475569', width: 3, dash: 'solid', arrowStart: false, arrowEnd: true, label: '', bend: null
       };
-      P.links.push(l); selLink = l.id; selNodes.clear();
+      P.links.push(l); selLink = l.id; (selNodes.clear(), selLinks.clear());
       render(); commit(); syncPanel();
       break;
     }
@@ -1216,7 +1264,7 @@ document.addEventListener('keydown', e => {
   if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveNow(); exportJSON(); return; }
-  if (e.key === 'Escape') { if (drawMode) toggleDraw(false); if (boxMode) toggleBox(false); selNodes.clear(); selLink = null; render(); syncPanel(); return; }
+  if (e.key === 'Escape') { if (drawMode) toggleDraw(false); if (boxMode) toggleBox(false); (selNodes.clear(), selLinks.clear()); selLink = null; render(); syncPanel(); return; }
   const one = selNodes.size === 1 ? [...selNodes][0] : null;
   closeCtx();
   if (mod && e.key.toLowerCase() === 'c') { if (selNodes.size) { e.preventDefault(); copySel(); } return; }
@@ -1228,7 +1276,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Tab' && one) { e.preventDefault(); addChild(one); }
   else if (e.key === 'Enter' && one) { e.preventDefault(); addSibling(one); }
   else if ((e.key === 'F2' || e.key === ' ') && one) { e.preventDefault(); startEdit(one); }
-  else if ((e.key === 'Delete' || e.key === 'Backspace') && (selNodes.size || selLink)) { e.preventDefault(); deleteSelected(); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && (selNodes.size || selLink || selLinks.size)) { e.preventDefault(); deleteSelected(); }
 });
 
 /* ---------------- 右側(左側)設定面板 ---------------- */
@@ -1370,14 +1418,14 @@ const ACTIONS = {
   'zoom-in': () => zoomAt(1.2),
   'zoom-out': () => zoomAt(1 / 1.2),
   'expand-all': () => { for (const id in P.nodes) P.nodes[id].isCollapsed = false; layoutAndRender(); commit(); fitView(true); },
-  'collapse-all': () => { root().children.forEach(c => { if (N(c) && N(c).children.length) N(c).isCollapsed = true; }); selNodes.clear(); layoutAndRender(); commit(); syncPanel(); fitView(true); },
+  'collapse-all': () => { root().children.forEach(c => { if (N(c) && N(c).children.length) N(c).isCollapsed = true; }); (selNodes.clear(), selLinks.clear()); layoutAndRender(); commit(); syncPanel(); fitView(true); },
   'add-free-node': () => addFreeNode(),
   'draw-mode': () => toggleDraw(),
   'box-mode': () => toggleBox(),
   'exit-mode': () => { drawMode = false; boxMode = false; render(); },
   'multi-mode': () => { multiMode = !multiMode; updateChrome(); toast(multiMode ? '多選模式：點方塊就能一次選很多個' : '已關閉多選模式'); },
   'toggle-panel': () => { document.body.classList.toggle('panel-closed'); },
-  deselect: () => { selNodes.clear(); selLink = null; render(); syncPanel(); },
+  deselect: () => { (selNodes.clear(), selLinks.clear()); selLink = null; render(); syncPanel(); },
   'add-child': () => { const n = primary(); if (n) addChild(n.id); },
   'add-sibling': () => { const n = primary(); if (n) addSibling(n.id); },
   'edit-text': () => { const n = primary(); if (n) startEdit(n.id); },
@@ -1402,7 +1450,7 @@ const ACTIONS = {
   'tline-delete': () => deleteTreeLine(),
   'tline-reset': () => { const c = selTreeChild(); if (c) { delete c.inLine; render(); commit(); syncPanel(); } },
   'tline-all-siblings': () => { const c = selTreeChild(); if (!c) return; const p = N(c.parentId); p.children.forEach(id => { if (N(id)) N(id).inLine = clone(c.inLine || {}); }); render(); commit(); toast('同一個方塊底下的連線都換成一樣了'); },
-  'tline-detach': () => { const c = selTreeChild(); if (!c) return; selLink = null; selNodes = new Set([c.id]); ACTIONS['detach-node'](); },
+  'tline-detach': () => { const c = selTreeChild(); if (!c) return; selLink = null; selLinks.clear(), selNodes = new Set([c.id]); ACTIONS['detach-node'](); },
   'show-hidden-lines': () => { let k = 0; for (const id in P.nodes) if (P.nodes[id].hideLine) { P.nodes[id].hideLine = false; k++; } render(); commit(); toast(k ? `找回了 ${k} 條連線` : '沒有被刪除的連線'); },
   'link-straight': () => { const l = P.links.find(k => k.id === selLink); if (l) { l.bend = null; render(); commit(); } },
   'delete-link': () => { P.links = P.links.filter(l => l.id !== selLink); selLink = null; render(); commit(); syncPanel(); },
@@ -1442,13 +1490,13 @@ function renameProject(id) {
 function closeMenus() { $$('.menu.open').forEach(m => m.classList.remove('open')); }
 function toggleBox(on) {
   boxMode = on === undefined ? !boxMode : on;
-  if (boxMode) { drawMode = false; selNodes.clear(); selLink = null; syncPanel(); }
+  if (boxMode) { drawMode = false; (selNodes.clear(), selLinks.clear()); selLink = null; syncPanel(); }
   render();
 }
 function toggleDraw(on) {
   drawMode = on === undefined ? !drawMode : on;
   if (drawMode) boxMode = false;
-  if (drawMode) { selNodes.clear(); syncPanel(); }
+  if (drawMode) { (selNodes.clear(), selLinks.clear()); syncPanel(); }
   render();
 }
 
@@ -1605,19 +1653,54 @@ function worksheetSet(rule) {
 }
 function exportSVGString(opts = {}) {
   const out = buildSVG({ ...opts, exportMode: true });
-  const b = contentBounds(out.vis);
-  const pad = 30;
+  const b = opts.only ? onlyBounds(opts.only) : contentBounds(out.vis);
+  const pad = opts.only ? 16 : 30;
   const vb = [b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2].map(v => Math.round(v * 10) / 10);
-  const bg = opts.ink ? '#ffffff' : (P.bg || '#ffffff');
+  const bg = opts.transparent ? null : opts.ink ? '#ffffff' : (P.bg || '#ffffff');
   return {
     w: vb[2], h: vb[3],
-    str: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.join(' ')}" width="${vb[2]}" height="${vb[3]}"><defs>${out.defs}</defs><rect x="${vb[0]}" y="${vb[1]}" width="${vb[2]}" height="${vb[3]}" fill="${bg}"/>${out.lines}${out.links}${out.nodes}</svg>`
+    str: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.join(' ')}" width="${vb[2]}" height="${vb[3]}"><defs>${out.defs}</defs>${bg ? `<rect x="${vb[0]}" y="${vb[1]}" width="${vb[2]}" height="${vb[3]}" fill="${bg}"/>` : ''}${out.lines}${out.links}${out.nodes}${out.labels || ''}</svg>`
   };
+}
+// 選取範圍：選到的方塊 + 選到的線 + 兩端都在選取方塊上的線
+function exportSelectionSet() {
+  const nodes = new Set(selNodes), links = new Set(selLinks);
+  if (selLink && !selLink.startsWith('T:')) links.add(selLink);
+  const vis = visibleSet();
+  P.links.forEach(l => { if (l.a.node && l.b.node && nodes.has(l.a.node) && nodes.has(l.b.node)) links.add(l.id); });
+  [...links].forEach(id => { const l = P.links.find(k => k.id === id); if (!l || (l.a.node && !vis.has(l.a.node)) || (l.b.node && !vis.has(l.b.node))) links.delete(id); });
+  return { nodes, links };
+}
+function hasSelection() { return selNodes.size > 0 || selLinks.size > 0 || (selLink && !selLink.startsWith('T:')); }
+function onlyBounds(only) {
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  const add = (x, y) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); };
+  only.nodes.forEach(id => { const n = N(id); if (!n) return; const r = nodeRect(n); add(r.x, r.y); add(r.x + r.w, r.y + r.h); });
+  only.links.forEach(id => { const l = P.links.find(k => k.id === id); if (!l) return; const g = linkGeom(l); [g.A, g.B, g.M].forEach(p => add(p.x, p.y)); if (l.label) { add(g.M.x - 60, g.M.y - 16); add(g.M.x + 60, g.M.y + 16); } });
+  if (x1 === Infinity) return { x: -100, y: -50, w: 200, h: 100 };
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
 function withAllVisible(fn) { // 匯出時暫時不管收合狀態？保持畫面上看到的樣子
   return fn();
 }
 function exportSVGFile() { const s = exportSVGString(); download(safeName(P.name) + '.svg', new Blob([s.str], { type: 'image/svg+xml' })); toast('已匯出 SVG'); }
+function exportImage(fmt, onlySel) {
+  const only = onlySel ? exportSelectionSet() : null;
+  if (onlySel && !only.nodes.size && !only.links.size) { toast('請先選取要存成圖片的方塊或線', 'warn'); return; }
+  const s = exportSVGString({ only, transparent: fmt === 'png' && onlySel });
+  const scale = Math.min(3, 9000 / Math.max(s.w, s.h));
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = Math.round(s.w * scale); c.height = Math.round(s.h * scale);
+    const g = c.getContext('2d');
+    if (fmt === 'jpg') { g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); }
+    g.drawImage(img, 0, 0, c.width, c.height);
+    const name = safeName(P.name) + (onlySel ? '_選取' : '') + (fmt === 'jpg' ? '.jpg' : '.png');
+    c.toBlob(b => { download(name, b); toast(`已存成 ${fmt.toUpperCase()}：${name}`); }, fmt === 'jpg' ? 'image/jpeg' : 'image/png', 0.95);
+  };
+  img.onerror = () => toast('圖片匯出失敗，請改用「列印」或 SVG', 'warn');
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.str);
+}
 function exportPNG() {
   const s = exportSVGString();
   const scale = Math.min(3, 9000 / Math.max(s.w, s.h));
@@ -1693,7 +1776,7 @@ function startPresent() {
   autoLayout(false);
   pState = { order: $('#p-order').value, groups: [], step: 0, shown: new Set(), revealed: new Set(), showFree: false, showLinks: false };
   pState.groups = presentGroups(pState.order);
-  selNodes.clear(); selLink = null;
+  (selNodes.clear(), selLinks.clear()); selLink = null;
   document.body.classList.add('presenting');
   $('#present-bar').classList.remove('hidden');
   $('#present-tip').classList.remove('hidden');
@@ -1827,7 +1910,7 @@ function pasteClip(targetId, pos) {
   autoLayout(false);
   newRoots.forEach(id => { const n = N(id); if (isFree(n)) layoutFreeSubtree(n); });
   if (target && isFree(target)) layoutFreeSubtree(target);
-  selNodes = new Set(newRoots); selLink = null;
+  selLinks.clear(), selNodes = new Set(newRoots); selLink = null;
   render(); commit(); syncPanel();
   toast('已貼上');
 }
@@ -1836,7 +1919,7 @@ function duplicateSel() {
   const roots = selRoots().filter(id => id !== P.rootId); if (!roots.length) return;
   const keep = new Set(selNodes);
   const savedClip = CLIP;
-  selNodes = new Set(roots); copySel(true);
+  selLinks.clear(), selNodes = new Set(roots); copySel(true);
   const first = N(roots[0]);
   if (first.parentId) pasteClip(first.parentId);
   else pasteClip(null, { x: PX(first) + 40, y: PY(first) + first.height + 30 });
@@ -1885,7 +1968,7 @@ function openPanelTo(sel) {
   syncPanel();
   setTimeout(() => { const el = $(sel); if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); } }, 50);
 }
-function selectBranch(id) { selNodes = new Set([id, ...descendants(id)]); selLink = null; render(); syncPanel(); }
+function selectBranch(id) { selLinks.clear(), selNodes = new Set([id, ...descendants(id)]); selLink = null; render(); syncPanel(); }
 function focusBranch(id) { fitView(true, new Set([id, ...descendants(id)].filter(x => visibleSet().has(x)))); }
 
 /* ---------------- 右鍵選單（iPad 長按） ---------------- */
@@ -1924,6 +2007,9 @@ function ctxItems(hit) {
       I('✂️', '拆成獨立方塊', ACTIONS['detach-node'], '', { off: many || !n.parentId }),
       I('⚙️', '更多設定…', () => openPanelTo('#f-text')),
       SEP,
+      I('🖼️', '選取的存成 PNG（透明背景）', () => exportImage('png', true)),
+      I('🖼️', '選取的存成 JPG', () => exportImage('jpg', true)),
+      SEP,
       I('🗑️', '刪除', () => deleteSelected(), 'Delete', { off: isRoot && !many, danger: true })
     ];
   }
@@ -1948,6 +2034,9 @@ function ctxItems(hit) {
       I('🎨', '複製線的樣式', copyLineStyle),
       I('🖌️', '貼上線的樣式', pasteLineStyle, '', { off: !LINE_CLIP }),
       SEP,
+      I('🖼️', '選取的存成 PNG（透明背景）', () => exportImage('png', true)),
+      I('🖼️', '選取的存成 JPG', () => exportImage('jpg', true)),
+      SEP,
       I('🗑️', tree ? '只刪除這條線' : '刪除這條線', () => deleteSelected(), 'Delete', { danger: true })
     ];
   }
@@ -1966,19 +2055,26 @@ function ctxItems(hit) {
     I('➖', '收合到第一層', ACTIONS['collapse-all']),
     I('〰️', '找回刪掉的分支線', ACTIONS['show-hidden-lines']),
     SEP,
-    I('🖼️', '匯出圖片 (PNG)', exportPNG),
+    ...(hasSelection() ? [I('🖼️', '選取的存成 PNG（透明背景）', () => exportImage('png', true)), I('🖼️', '選取的存成 JPG', () => exportImage('jpg', true))] : []),
+    I('🖼️', '整張存成 PNG', exportPNG),
+    I('🖼️', '整張存成 JPG', () => exportImage('jpg', false)),
     I('🖨️', '列印／學習單', openPrint)
   ];
 }
-function selectAll() { selNodes = new Set(visibleSet()); selLink = null; render(); syncPanel(); }
+function selectAll() {
+  const vis = visibleSet();
+  selNodes = new Set(vis); selLink = null;
+  selLinks = new Set(P.links.filter(l => (!l.a.node || vis.has(l.a.node)) && (!l.b.node || vis.has(l.b.node))).map(l => l.id));
+  render(); syncPanel();
+}
 function openCtx(hit, cx, cy) {
   closeCtx(); finishEdit();
   if (presenting) return;
   ctxWorld = toWorld(cx, cy);
   if (drawMode) toggleDraw(false);
   if (boxMode) toggleBox(false);
-  if (hit.kind === 'node') { if (!selNodes.has(hit.id)) { selNodes = new Set([hit.id]); } selLink = null; }
-  else if (hit.kind === 'link') { selLink = hit.id; selNodes.clear(); }
+  if (hit.kind === 'node') { if (!selNodes.has(hit.id)) { selLinks.clear(), selNodes = new Set([hit.id]); } selLink = null; }
+  else if (hit.kind === 'link') { if (!selLinks.has(hit.id)) { selLink = hit.id; (selNodes.clear(), selLinks.clear()); } }
   else if (hit.kind === 'toggle' || hit.kind === 'handle' || hit.kind === 'resize') return;
   render(); syncPanel();
   const items = ctxItems(hit);
