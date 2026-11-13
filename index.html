@@ -190,7 +190,7 @@
 
     <!-- 選了分支連線 -->
     <section id="sec-tline" class="psec hidden">
-      <div class="sec-head"><h3>〰️ 分支連線設定</h3><button class="link-btn" data-act="deselect">完成 ✕</button></div>
+      <div class="sec-head"><h3 id="tline-title">〰️ 分支連線設定</h3><button class="link-btn" data-act="deselect">完成 ✕</button></div>
       <p class="hint">這條線連著上一層和下一層的方塊。這裡的設定只會改這一條線。</p>
       <label class="field">線上的文字<input type="text" id="f-tline-label" placeholder="例如：包含、例如"></label>
       <div class="row2">
@@ -216,7 +216,7 @@
 
     <!-- 選了連結線 -->
     <section id="sec-link" class="psec hidden">
-      <div class="sec-head"><h3>〰️ 連結線設定</h3><button class="link-btn" data-act="deselect">完成 ✕</button></div>
+      <div class="sec-head"><h3 id="link-title">〰️ 連結線設定</h3><button class="link-btn" data-act="deselect">完成 ✕</button></div>
       <p class="hint">拖曳線兩端的圓點可以移動端點；拉到方塊旁邊會自動接上，拉離方塊就會分開。拖曳中間的菱形可以把線拉彎。</p>
       <label class="field">線上的文字<input type="text" id="f-link-label" placeholder="例如：因為、所以、屬於"></label>
       <div class="row2">
@@ -296,7 +296,7 @@
 <input type="file" id="file-img" accept="image/*" hidden>
 
 <script src="templates.js?v=2"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 <script src="ai.js?v=2"></script>
 <script src="cloud.js?v=1"></script>
 </body>
