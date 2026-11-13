@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=LXGW+WenKai+TC:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=5">
+<link rel="stylesheet" href="app.css?v=6">
 </head>
 <body>
 
@@ -73,7 +73,10 @@
 
       <h3>🖼️ 畫布</h3>
       <label class="field inline">背景顏色 <input type="color" id="canvas-bg"></label>
-      <label class="field check"><input type="checkbox" id="canvas-grid"> 顯示格點</label>
+      <div class="field">背景
+        <div class="seg" id="seg-grid"><button data-grid="dots">⠿ 點格</button><button data-grid="lines">▦ 線格</button><button data-grid="off">▢ 空白</button></div>
+        <p class="hint" style="margin:6px 0 0">有格點時，拖動方塊、線、畫框都會自動對齊格點；也會對齊其他方塊（出現粉紅色參考線）。按住 Alt 拖動可以暫時不對齊。</p>
+      </div>
 
       <h3>➕ 新增</h3>
       <div class="row2">
@@ -292,7 +295,7 @@
 <input type="file" id="file-img" accept="image/*" hidden>
 
 <script src="templates.js?v=2"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 <script src="ai.js?v=2"></script>
 <script src="cloud.js?v=1"></script>
 </body>

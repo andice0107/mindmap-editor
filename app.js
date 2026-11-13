@@ -491,7 +491,11 @@ function render() {
   if (!P) return;
   const out = buildSVG({ mono: false });
   const dot = mix(P.bg || '#f8fafc', 0.82, '#000000');
-  $('#defs').innerHTML = `<pattern id="grid-pat" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1.5" fill="${P.grid ? (isDark(P.bg) ? '#ffffff22' : '#0f172a1f') : 'transparent'}"/></pattern>` + out.defs;
+  const gc = isDark(P.bg) ? '#ffffff' : '#0f172a', gm = gridMode();
+  const pat = gm === 'lines'
+    ? `<path d="M${GRID} 0 L0 0 0 ${GRID}" fill="none" stroke="${gc}" stroke-opacity=".13" stroke-width="1"/>`
+    : gm === 'dots' ? `<circle cx="0" cy="0" r="1.8" fill="${gc}" fill-opacity=".2"/><circle cx="${GRID}" cy="0" r="1.8" fill="${gc}" fill-opacity=".2"/><circle cx="0" cy="${GRID}" r="1.8" fill="${gc}" fill-opacity=".2"/><circle cx="${GRID}" cy="${GRID}" r="1.8" fill="${gc}" fill-opacity=".2"/>` : '';
+  $('#defs').innerHTML = `<pattern id="grid-pat" width="${GRID}" height="${GRID}" patternUnits="userSpaceOnUse">${pat}</pattern>` + out.defs;
   $('#g-lines').innerHTML = out.lines;
   $('#g-links').innerHTML = out.links;
   $('#g-nodes').innerHTML = out.nodes;
@@ -499,6 +503,46 @@ function render() {
   $('#stage').style.background = P.bg || '#f8fafc';
   applyView();
   updateChrome();
+}
+const GRID = 24;
+function gridMode() { return P.grid === 'lines' ? 'lines' : P.grid ? 'dots' : 'off'; }
+const gsnap = v => Math.round(v / GRID) * GRID;
+// 自由線的端點（沒接在方塊上的）靠近時吸過去
+function endpointAt(wx, wy, exLink) {
+  let best = null, bd = SNAP() * 0.8;
+  P.links.forEach(l => {
+    if (l.id === exLink) return;
+    ['a', 'b'].forEach(k => { const e = l[k]; if (e.node) return; const d = Math.hypot(e.x - wx, e.y - wy); if (d <= bd) { bd = d; best = { x: e.x, y: e.y }; } });
+  });
+  return best;
+}
+// 端點落點：方塊 > 其他線的端點 > 格點
+function snapEnd(w, noSnap, exLink, exNode) {
+  if (noSnap) return { pt: { x: w.x, y: w.y } };
+  const nd = nodeAt(w.x, w.y, SNAP());
+  if (nd && nd !== exNode) return { node: nd, pt: { x: w.x, y: w.y } };
+  const ep = endpointAt(w.x, w.y, exLink);
+  if (ep) return { ep, pt: ep };
+  if (gridMode() !== 'off') return { pt: { x: gsnap(w.x), y: gsnap(w.y) } };
+  return { pt: { x: w.x, y: w.y } };
+}
+// 拖方塊：先對齊其他方塊的邊/中線（智慧參考線），沒有的話對齊格點
+function alignSnap(n, ex) {
+  const T = 8 / view.z, r = nodeRect(n);
+  const ax = [r.x, r.x + r.w / 2, r.x + r.w], ay = [r.y, r.y + r.h / 2, r.y + r.h];
+  let bx = null, by = null;
+  for (const id of visibleSet()) {
+    if (ex.has(id)) continue;
+    const o = nodeRect(N(id));
+    const ox = [o.x, o.x + o.w / 2, o.x + o.w], oy = [o.y, o.y + o.h / 2, o.y + o.h];
+    ax.forEach(a => ox.forEach(b => { const d = b - a; if (Math.abs(d) < T && (!bx || Math.abs(d) < Math.abs(bx.d))) bx = { d, g: b }; }));
+    ay.forEach(a => oy.forEach(b => { const d = b - a; if (Math.abs(d) < T && (!by || Math.abs(d) < Math.abs(by.d))) by = { d, g: b }; }));
+  }
+  const guides = [];
+  let dx = 0, dy = 0;
+  if (bx) { dx = bx.d; guides.push({ x: bx.g }); } else if (gridMode() !== 'off') dx = gsnap(r.x) - r.x;
+  if (by) { dy = by.d; guides.push({ y: by.g }); } else if (gridMode() !== 'off') dy = gsnap(r.y) - r.y;
+  return { dx, dy, guides };
 }
 function isDark(hex) { const h = normHex(hex); const v = parseInt(h.slice(1, 3), 16) * .299 + parseInt(h.slice(3, 5), 16) * .587 + parseInt(h.slice(5, 7), 16) * .114; return v < 128; }
 function requestRender() { if (rafPending) return; rafPending = true; requestAnimationFrame(() => { rafPending = false; render(); }); }
@@ -543,6 +587,20 @@ function uiLayer(vis) {
     const n = N(gesture.snapNode);
     if (n) { const r = nodeRect(n), pad = 10 / z; s += `<rect x="${r.x - pad}" y="${r.y - pad}" width="${r.w + pad * 2}" height="${r.h + pad * 2}" rx="${14 / z}" fill="#10b98122" stroke="#10b981" stroke-width="${3 / z}" pointer-events="none"/>`; }
   }
+  if (gesture && gesture.snapPt) {
+    const p = gesture.snapPt;
+    s += `<circle cx="${p.x}" cy="${p.y}" r="${16 / z}" fill="#10b98133" stroke="#10b981" stroke-width="${3 / z}" pointer-events="none"/>`;
+  }
+  if (gesture && gesture.guides) gesture.guides.forEach(gd => {
+    s += gd.x !== undefined
+      ? `<line x1="${gd.x}" y1="-50000" x2="${gd.x}" y2="50000" stroke="#ec4899" stroke-width="${1.5 / z}" stroke-dasharray="${6 / z},${4 / z}" pointer-events="none"/>`
+      : `<line x1="-50000" y1="${gd.y}" x2="50000" y2="${gd.y}" stroke="#ec4899" stroke-width="${1.5 / z}" stroke-dasharray="${6 / z},${4 / z}" pointer-events="none"/>`;
+  });
+  if (gesture && gesture.sizeLabel && gesture.type === 'resize') {
+    const n = N(gesture.id);
+    if (n) { const r = nodeRect(n), fs = 13 / z, t = `寬 ${Math.round(n.width)} × 高 ${Math.round(n.height)}`;
+      s += `<g pointer-events="none"><rect x="${r.x + r.w + 12 / z}" y="${r.y + r.h + 10 / z}" width="${t.length * fs * 0.62 + 16 / z}" height="${24 / z}" rx="${6 / z}" fill="#1e293b"/><text x="${r.x + r.w + 20 / z}" y="${r.y + r.h + 22 / z}" font-size="${fs}" fill="#fff" dominant-baseline="central">${t}</text></g>`; }
+  }
   if (gesture && gesture.type === 'box' && gesture.preview) {
     const b = gesture.preview;
     s += `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${b.h / 2}" fill="#4f46e522" stroke="#4f46e5" stroke-width="${3 / z}" stroke-dasharray="${8 / z},${6 / z}" pointer-events="none"/>`;
@@ -560,9 +618,6 @@ function applyView() {
 }
 
 function updateChrome() {
-  const r = root();
-  const name = r ? r.text.split('\n')[0] : P.name;
-  if (name && P.name !== name) { P.name = name; renderTabs(); }
   document.title = APP_NAME;
   $('#btn-undo').disabled = hi <= 0;
   $('#btn-redo').disabled = hi >= hist.length - 1;
@@ -640,7 +695,7 @@ function restore(s) {
   const d = JSON.parse(s);
   Object.assign(P, d);
   selNodes.clear(); selLink = null; LAY.clear();
-  layoutAndRender(); syncPanel(); scheduleSave();
+  layoutAndRender(); syncPanel(); renderTabs(); scheduleSave();
 }
 function undo() { if (hi > 0) { hi--; restore(hist[hi]); } }
 function redo() { if (hi < hist.length - 1) { hi++; restore(hist[hi]); } }
@@ -670,7 +725,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) saveN
 /* ---------------- 畫布分頁 ---------------- */
 function renderTabs() {
   $('#tab-list').innerHTML = state.projects.map(p =>
-    `<div class="tab ${p.id === state.activeId ? 'active' : ''}" data-tab="${p.id}" title="點兩下可以改名"><span class="tname">${esc(p.name || '未命名')}</span><button data-close="${p.id}" title="關閉這張畫布">✕</button></div>`).join('');
+    `<div class="tab ${p.id === state.activeId ? 'active' : ''}" data-tab="${p.id}" title="點兩下可以改名"><span class="tname">${esc(p.name || '未命名')}</span>${p.id === state.activeId ? `<button data-rename="${p.id}" title="改畫布名稱">✏️</button>` : ''}<button data-close="${p.id}" title="關閉這張畫布">✕</button></div>`).join('');
 }
 function switchProject(id) {
   if (P && id === P.id) return;
@@ -935,8 +990,8 @@ svg.addEventListener('pointerdown', e => {
   }
   if (boxMode) { gesture = { ...base, type: 'box' }; return; }
   if (drawMode) {
-    const start = nodeAt(w.x, w.y, SNAP());
-    gesture = { ...base, type: 'draw', startNode: start, startPt: w };
+    const sn = snapEnd(w, e.altKey, null, null);
+    gesture = { ...base, type: 'draw', startNode: sn.node || null, startPt: sn.pt };
     return;
   }
   if (hit.kind === 'resize') {
@@ -976,6 +1031,12 @@ svg.addEventListener('pointermove', e => {
       }
       const ddx = dx / view.z, ddy = dy / view.z;
       gesture.dragIds.forEach(id => { const n = N(id); n.offsetX = gesture.start[id].ox + ddx; n.offsetY = gesture.start[id].oy + ddy; });
+      gesture.guides = null;
+      if (!e.altKey) {
+        const sn = alignSnap(N(gesture.id), new Set(gesture.dragIds));
+        if (sn.dx || sn.dy) gesture.dragIds.forEach(id => { const n = N(id); n.offsetX += sn.dx; n.offsetY += sn.dy; });
+        gesture.guides = sn.guides;
+      }
       requestRender(); break;
     }
     case 'resize': {
@@ -983,6 +1044,8 @@ svg.addEventListener('pointermove', e => {
       n.customResized = true;
       n.width = Math.max(50, gesture.w0n + dx / view.z * 2);
       n.height = Math.max(30, gesture.h0n + dy / view.z * 2);
+      if (gridMode() !== 'off' && !e.altKey) { n.width = Math.max(GRID * 2, gsnap(n.width)); n.height = Math.max(GRID, gsnap(n.height)); }
+      gesture.sizeLabel = true;
       requestRender(); break;
     }
     case 'handle': {
@@ -992,23 +1055,51 @@ svg.addEventListener('pointermove', e => {
         l.bend = { x: w.x - (ra.x + rb.x) / 2, y: w.y - (ra.y + rb.y) / 2 };
       } else {
         const other = k === 'a' ? l.b.node : l.a.node;
-        const snap = nodeAt(w.x, w.y, SNAP());
-        gesture.snapNode = snap && snap !== other ? snap : null;
-        l[k] = { node: null, x: w.x, y: w.y };
+        const sn = snapEnd(w, e.altKey, l.id, other);
+        gesture.snapNode = sn.node || null; gesture.snapPt = sn.ep || null;
+        l[k] = { node: null, x: sn.pt.x, y: sn.pt.y };
       }
       requestRender(); break;
     }
     case 'draw': {
       const A = gesture.startNode ? { x: PX(N(gesture.startNode)), y: PY(N(gesture.startNode)) } : gesture.startPt;
-      const snap = nodeAt(w.x, w.y, SNAP());
-      gesture.snapNode = snap && snap !== gesture.startNode ? snap : null;
-      gesture.preview = { A: gesture.startNode ? clipToBox(N(gesture.startNode), w.x, w.y) : A, B: w };
+      const sn = snapEnd(w, e.altKey, null, gesture.startNode);
+      gesture.snapNode = sn.node || null; gesture.snapPt = sn.ep || null;
+      gesture.endPt = sn.pt;
+      gesture.preview = { A: gesture.startNode ? clipToBox(N(gesture.startNode), w.x, w.y) : A, B: sn.node ? w : sn.pt };
       requestRender(); break;
     }
     case 'box':
-      gesture.preview = { x: Math.min(gesture.w0.x, w.x), y: Math.min(gesture.w0.y, w.y), w: Math.abs(w.x - gesture.w0.x), h: Math.abs(w.y - gesture.w0.y) };
+      { const g0 = gridMode() !== 'off' && !e.altKey ? { x: gsnap(gesture.w0.x), y: gsnap(gesture.w0.y) } : gesture.w0, w1 = gridMode() !== 'off' && !e.altKey ? { x: gsnap(w.x), y: gsnap(w.y) } : w;
+        gesture.preview = { x: Math.min(g0.x, w1.x), y: Math.min(g0.y, w1.y), w: Math.abs(w1.x - g0.x), h: Math.abs(w1.y - g0.y) }; }
       requestRender(); break;
-    case 'link': case 'toggle':
+    case 'link': {
+      const l = !gesture.id.startsWith('T:') && P.links.find(k => k.id === gesture.id);
+      if (!l) { gesture.type = 'pan'; gesture.vx = view.x - dx; gesture.vy = view.y - dy; break; }
+      if (!gesture.o) {
+        // 整條線拖動：接在方塊上的端點先變成自由端點（拖動就會分開）
+        const g = linkGeom(l);
+        gesture.o = { A: { ...g.A }, B: { ...g.B } };
+        selLink = l.id; selNodes.clear(); syncPanel();
+      }
+      const ddx = dx / view.z, ddy = dy / view.z;
+      let A = { x: gesture.o.A.x + ddx, y: gesture.o.A.y + ddy }, B = { x: gesture.o.B.x + ddx, y: gesture.o.B.y + ddy };
+      gesture.snapNode = null; gesture.snapPt = null; gesture.attach = {};
+      if (!e.altKey) {
+        let fx = 0, fy = 0, done = false;
+        for (const [k, P0] of [['a', A], ['b', B]]) {
+          const nd = nodeAt(P0.x, P0.y, SNAP() * 0.7);
+          if (nd) { gesture.attach[k] = nd; gesture.snapNode = nd; done = true; break; }
+          const ep = endpointAt(P0.x, P0.y, l.id);
+          if (ep) { fx = ep.x - P0.x; fy = ep.y - P0.y; gesture.snapPt = ep; done = true; break; }
+        }
+        if (!done && gridMode() !== 'off') { fx = gsnap(A.x) - A.x; fy = gsnap(A.y) - A.y; }
+        A = { x: A.x + fx, y: A.y + fy }; B = { x: B.x + fx, y: B.y + fy };
+      }
+      l.a = { node: null, x: A.x, y: A.y }; l.b = { node: null, x: B.x, y: B.y };
+      requestRender(); break;
+    }
+    case 'toggle':
       gesture.type = 'pan'; gesture.vx = view.x - dx; gesture.vy = view.y - dy; break;
   }
 });
@@ -1042,12 +1133,21 @@ function endPointer(e) {
       break;
     case 'resize': LAY.delete(g.id); render(); commit(); break;
     case 'toggle': if (!g.moved) toggleCollapse(g.hit.id); break;
-    case 'link': if (!g.moved) { selLink = g.id; selNodes.clear(); render(); syncPanel(); } break;
+    case 'link':
+      if (!g.moved) { selLink = g.id; selNodes.clear(); render(); syncPanel(); }
+      else if (g.o) {
+        const l = P.links.find(k => k.id === g.id);
+        if (l && g.attach) Object.entries(g.attach).forEach(([k, nd]) => { l[k] = { node: nd, x: 0, y: 0 }; });
+        render(); commit(); syncPanel();
+        if (g.attach && Object.keys(g.attach).length) toast('已接到方塊上');
+        else if (g.snapPt) toast('已和另一條線接在一起');
+      }
+      break;
     case 'handle': {
       const l = g.link;
       if (g.key !== 'm' && g.snapNode) { l[g.key] = { node: g.snapNode, x: 0, y: 0 }; }
       render(); commit(); syncPanel();
-      if (g.key !== 'm' && g.moved) toast(g.snapNode ? '已接到方塊上' : '端點已和方塊分開');
+      if (g.key !== 'm' && g.moved) toast(g.snapNode ? '已接到方塊上' : g.snapPt ? '已和另一條線接在一起' : '端點已分開');
       break;
     }
     case 'box': {
@@ -1060,12 +1160,11 @@ function endPointer(e) {
     case 'draw': {
       const dist = Math.hypot(e.clientX - g.sx, e.clientY - g.sy);
       if (dist < 12) { render(); if (g.hit.kind === 'link') { selLink = g.hit.id; render(); syncPanel(); } break; }
-      const end = nodeAt(w.x, w.y, SNAP());
-      const endNode = end && end !== g.startNode ? end : null;
+      const endNode = g.snapNode && g.snapNode !== g.startNode ? g.snapNode : null;
       const l = {
         id: uid('l'),
         a: g.startNode ? { node: g.startNode, x: 0, y: 0 } : { node: null, x: g.startPt.x, y: g.startPt.y },
-        b: endNode ? { node: endNode, x: 0, y: 0 } : { node: null, x: w.x, y: w.y },
+        b: endNode ? { node: endNode, x: 0, y: 0 } : { node: null, x: (g.endPt || w).x, y: (g.endPt || w).y },
         color: '#475569', width: 3, dash: 'solid', arrowStart: false, arrowEnd: true, label: '', bend: null
       };
       P.links.push(l); selLink = l.id; selNodes.clear();
@@ -1183,7 +1282,7 @@ function syncPanel() {
   }
   renderPalettes();
   $('#canvas-bg').value = normHex(P.bg || '#f8fafc');
-  $('#canvas-grid').checked = !!P.grid;
+  $$('#seg-grid button').forEach(b => b.classList.toggle('on', b.dataset.grid === gridMode()));
   updateChrome();
 }
 function selTreeChild() { return selLink && selLink.startsWith('T:') ? N(selLink.slice(2)) : null; }
@@ -1203,10 +1302,15 @@ $('#panel').addEventListener('input', e => {
   if (el.dataset.lk && (el.type === 'range' || el.type === 'color')) { const l = P.links.find(k => k.id === selLink); if (l) { l[el.dataset.lk] = el.dataset.num ? +el.value : el.value; render(); commitLater(); } return; }
   if (el.id === 'canvas-bg') { P.bg = el.value; render(); commitLater(); }
 });
+$('#seg-grid').addEventListener('click', e => {
+  const b = e.target.closest('[data-grid]'); if (!b) return;
+  P.grid = b.dataset.grid === 'off' ? false : b.dataset.grid === 'lines' ? 'lines' : true;
+  render(); commit(); syncPanel();
+  toast(b.dataset.grid === 'off' ? '已改成空白背景（拖動時只對齊其他方塊）' : '有格點時，拖動方塊和線會自動對齊格點');
+});
 $('#panel').addEventListener('change', e => {
   const el = e.target;
   if (el.id === 'f-zy') { const n = primary(); if (n) { n.zyOverride = el.value.trim(); LAY.delete(n.id); autoLayout(false); render(); commit(); syncPanel(); } return; }
-  if (el.id === 'canvas-grid') { P.grid = el.checked; render(); commit(); return; }
   if (el.dataset.k && el.type !== 'range' && el.type !== 'color') {
     const v = el.type === 'checkbox' ? el.checked : (el.dataset.num ? clamp(+el.value || 16, 8, 80) : el.value);
     setStyle(el.dataset.k, v); return;
@@ -1306,11 +1410,12 @@ const ACTIONS = {
   'p-all': () => presentAll(), 'p-reset': () => presentGoto(0), 'present-exit': () => exitPresent()
 };
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-act],[data-menu],[data-tab],[data-close],[data-pal],[data-theme-pick],[data-emoji],[data-flag],#sec-node .seg [data-k]');
+  const t = e.target.closest('[data-act],[data-menu],[data-tab],[data-close],[data-rename],[data-pal],[data-theme-pick],[data-emoji],[data-flag],#sec-node .seg [data-k]');
   if (!t) { if (!e.target.closest('.menu')) closeMenus(); return; }
   if (t.dataset.menu) { const m = $('#' + t.dataset.menu); const open = !m.classList.contains('open'); closeMenus(); m.classList.toggle('open', open); return; }
   closeMenus();
   if (t.dataset.close) { e.stopPropagation(); closeProject(t.dataset.close); return; }
+  if (t.dataset.rename) { e.stopPropagation(); renameProject(t.dataset.rename); return; }
   if (t.dataset.tab) { switchProject(t.dataset.tab); return; }
   if (t.dataset.pal) { applyPalette(t.dataset.pal); return; }
   if (t.dataset.themePick) { setTheme(t.dataset.themePick); return; }
@@ -1323,13 +1428,17 @@ document.addEventListener('click', e => {
 $('#tab-list').addEventListener('dblclick', e => {
   const t = e.target.closest('[data-tab]'); if (!t) return;
   const p = state.projects.find(x => x.id === t.dataset.tab);
-  promptBox('畫布名稱（就是中心主題的第一行）', p.name, v => {
+  renameProject(p.id);
+});
+function renameProject(id) {
+  const p = state.projects.find(x => x.id === id); if (!p) return;
+  promptBox('畫布名稱（分頁上的名字，也是存檔的檔名）', p.name, v => {
     if (!v) return;
     switchProject(p.id);
-    const r = root(); const rest = r.text.split('\n').slice(1);
-    r.text = [v, ...rest].join('\n'); layoutAndRender(); commit();
+    P.name = v.slice(0, 60); renderTabs(); commit();
+    toast(`已改名為「${P.name}」`);
   });
-});
+}
 function closeMenus() { $$('.menu.open').forEach(m => m.classList.remove('open')); }
 function toggleBox(on) {
   boxMode = on === undefined ? !boxMode : on;
@@ -1375,11 +1484,15 @@ function toast(msg, type) {
 
 function openTemplatePicker() {
   modal(`<h2>新增畫布：選一個範本</h2><p class="hint">選好後會開一張新的畫布分頁，原本的畫布不會被改到。</p>
+    <label class="field" style="margin:10px 0 4px;display:block">畫布名稱（分頁上的名字、也是存檔檔名；可以先不填，之後點分頁上的 ✏️ 再改）
+    <input id="tpl-name" placeholder="例如：第三課 小水滴的旅行" style="width:100%;padding:10px 12px;font-size:17px;border:1px solid var(--line);border-radius:10px;margin-top:6px"></label>
     <div class="tpl-grid">${MM_TEMPLATES.map(t => `<button class="tpl" data-tpl="${t.id}"><div class="ti">${t.icon}</div><b>${t.name}</b><span>${t.desc}</span></button>`).join('')}</div>
     <div class="actions"><button class="btn" data-x>取消</button></div>`, m => {
     $$('[data-tpl]', m).forEach(b => b.onclick = () => {
       const t = MM_TEMPLATES.find(x => x.id === b.dataset.tpl);
-      closeModal(); addProject(buildFromTree(t.tree)); toast(`已開啟「${t.name}」範本`);
+      const nm = $('#tpl-name', m).value.trim();
+      const p = buildFromTree(t.tree); if (nm) p.name = nm.slice(0, 60);
+      closeModal(); addProject(p); toast(`已開啟「${t.name}」範本`);
     });
   });
 }
