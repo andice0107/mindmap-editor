@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>心智圖編輯器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=LXGW+WenKai+TC:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css?v=1">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand">
+    <span class="logo">🧠</span>
+    <div class="brand-text">
+      <div id="title-text">心智圖</div>
+      <div id="save-state">✓ 已自動儲存</div>
+    </div>
+  </div>
+  <div class="tools">
+    <button class="tb" id="btn-undo" data-act="undo" title="復原 (Ctrl+Z)"><span class="ic">↶</span><span class="lb">復原</span></button>
+    <button class="tb" id="btn-redo" data-act="redo" title="重做 (Ctrl+Y)"><span class="ic">↷</span><span class="lb">重做</span></button>
+    <span class="sep"></span>
+    <button class="tb" data-act="new-canvas"><span class="ic">📄</span><span class="lb">新增畫布</span></button>
+    <button class="tb" data-act="open-file"><span class="ic">📂</span><span class="lb">開啟檔案</span></button>
+    <button class="tb" data-act="save-file"><span class="ic">💾</span><span class="lb">存成檔案</span></button>
+    <div class="menu-wrap">
+      <button class="tb" data-menu="m-io"><span class="ic">📤</span><span class="lb">匯入／匯出 ▾</span></button>
+      <div class="menu" id="m-io">
+        <button data-act="import-md">📥 匯入 Markdown 大綱</button>
+        <button data-act="export-md">📝 匯出 Markdown 大綱 (.md)</button>
+        <button data-act="export-png">🖼️ 匯出圖片 (PNG)</button>
+        <button data-act="export-svg">📐 匯出向量圖 (SVG)</button>
+        <button data-act="export-mermaid">🧩 Mermaid 語法</button>
+      </div>
+    </div>
+    <button class="tb" data-act="print"><span class="ic">🖨️</span><span class="lb">列印／學習單</span></button>
+    <button class="tb primary" data-act="present"><span class="ic">📺</span><span class="lb">上課投影</span></button>
+    <button class="tb" data-act="help"><span class="ic">❓</span><span class="lb">說明</span></button>
+  </div>
+</header>
+
+<nav id="tabs">
+  <div id="tab-list"></div>
+  <button class="addtab" data-act="new-canvas">＋ 新增畫布</button>
+</nav>
+
+<main id="main">
+  <aside id="panel">
+    <!-- 沒選東西：畫布設定 -->
+    <section id="sec-canvas" class="psec">
+      <h3>🌗 主題</h3>
+      <div id="theme-list" class="theme-list"></div>
+
+      <h3>🎨 一鍵套色</h3>
+      <p class="hint">每個大分支自動換上不同顏色。</p>
+      <div id="palette-list" class="palette-list"></div>
+
+      <h3>🧭 排版</h3>
+      <div class="row2">
+        <button class="pbtn" data-act="relayout">🔄 重新自動排版</button>
+        <button class="pbtn" data-act="fit">🔍 整張放進畫面</button>
+        <button class="pbtn" data-act="expand-all">➕ 全部展開</button>
+        <button class="pbtn" data-act="collapse-all">➖ 收合到第一層</button>
+      </div>
+
+      <h3>🖼️ 畫布</h3>
+      <label class="field inline">背景顏色 <input type="color" id="canvas-bg"></label>
+      <label class="field check"><input type="checkbox" id="canvas-grid"> 顯示格點</label>
+
+      <h3>➕ 新增</h3>
+      <div class="row2">
+        <button class="pbtn" data-act="add-free-node">🔲 獨立方塊</button>
+        <button class="pbtn" data-act="draw-mode">✏️ 畫連結線</button>
+      </div>
+      <p class="hint">「獨立方塊」不屬於任何分支，可以放在畫布任何地方，再用連結線接起來。</p>
+
+      <h3>📋 範本</h3>
+      <button class="pbtn wide" data-act="new-canvas">開新畫布並選擇範本</button>
+      <p class="hint">點畫布上的方塊，這裡就會變成「方塊設定」。</p>
+    </section>
+
+    <!-- 選了節點 -->
+    <section id="sec-node" class="psec hidden">
+      <div class="sec-head"><h3 id="node-sec-title">✏️ 方塊設定</h3><button class="link-btn" data-act="deselect">完成 ✕</button></div>
+
+      <label class="field">文字內容<textarea id="f-text" rows="3" placeholder="輸入文字，可以換行"></textarea></label>
+
+      <div class="field">表情符號
+        <div id="emoji-list" class="emoji-list"></div>
+      </div>
+
+      <div class="field">圖片
+        <div class="row2">
+          <button class="pbtn" data-act="add-image">🖼️ 加入圖片</button>
+          <button class="pbtn" data-act="remove-image">移除圖片</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="check"><input type="checkbox" data-k="zhuyin"> 加上注音</label>
+        <div id="zy-box" class="hidden">
+          <label class="sub">注音（破音字可以直接改，每個字用空白隔開）</label>
+          <input type="text" id="f-zy" class="zy-input">
+        </div>
+      </div>
+
+      <label class="field check"><input type="checkbox" data-k="blank"> 挖空（學習單和投影時先藏起來）</label>
+
+      <h4>文字</h4>
+      <div class="seg" id="seg-writing">
+        <button data-k="writingMode" data-v="horizontal">橫式</button>
+        <button data-k="writingMode" data-v="vertical">直式</button>
+      </div>
+      <div class="row2">
+        <label class="field">字的大小<input type="number" min="8" max="80" data-k="fontSize" data-num="1"></label>
+        <label class="field">字型
+          <select data-k="fontFamily">
+            <option value="sans">黑體</option>
+            <option value="kai">楷體</option>
+            <option value="serif">明體</option>
+          </select>
+        </label>
+      </div>
+      <div class="row-inline">
+        <div class="seg small">
+          <button data-flag="isBold"><b>粗</b></button>
+          <button data-flag="isItalic"><i>斜</i></button>
+          <button data-flag="isUnderline"><u>底線</u></button>
+        </div>
+        <label class="color-pick">字色<input type="color" data-k="fontColor"></label>
+      </div>
+
+      <h4>外框</h4>
+      <label class="field">形狀
+        <select data-k="shape">
+          <option value="rounded-rect">圓角方塊</option>
+          <option value="rect">方塊</option>
+          <option value="capsule">膠囊</option>
+          <option value="ellipse">橢圓</option>
+          <option value="none">沒有外框</option>
+        </select>
+      </label>
+      <div class="row2">
+        <label class="field">框線粗細<input type="range" min="0" max="8" step="1" data-k="borderWidth" data-num="1"></label>
+        <label class="field">框線樣式
+          <select data-k="borderStyle"><option value="solid">實線</option><option value="dashed">虛線</option><option value="dotted">點線</option></select>
+        </label>
+      </div>
+      <div class="row-inline">
+        <label class="color-pick">底色<input type="color" data-k="fillColor"></label>
+        <label class="color-pick">框線色<input type="color" data-k="borderColor"></label>
+      </div>
+
+      <h4>往下一層的連線</h4>
+      <div class="row2">
+        <label class="field">樣子
+          <select data-k="lineType"><option value="curve">彎曲線</option><option value="elbow">直角折線</option><option value="straight">直線</option></select>
+        </label>
+        <label class="field">線條樣式
+          <select data-k="lineStyle"><option value="solid">實線</option><option value="dashed">虛線</option><option value="dotted">點線</option></select>
+        </label>
+      </div>
+      <div class="row2">
+        <label class="field">粗細<input type="range" min="1" max="10" step="1" data-k="lineWidth" data-num="1"></label>
+        <label class="color-pick">顏色<input type="color" data-k="lineColor"></label>
+      </div>
+      <label class="field check"><input type="checkbox" data-k="arrowEnd"> 線的尾端加箭頭</label>
+      <label class="field check"><input type="checkbox" data-k="hideLine"> 隱藏「和上一層」的連線</label>
+
+      <h4>其他</h4>
+      <div class="row2">
+        <button class="pbtn" data-act="style-to-branch">🎨 樣式套用到整個分支</button>
+        <button class="pbtn" data-act="reset-size">↔️ 恢復自動大小</button>
+        <button class="pbtn" data-act="detach-node">✂️ 拆成獨立方塊</button>
+        <button class="pbtn" data-act="flip-side">⇆ 換到另一邊</button>
+      </div>
+    </section>
+
+    <!-- 選了連結線 -->
+    <section id="sec-link" class="psec hidden">
+      <div class="sec-head"><h3>〰️ 連結線設定</h3><button class="link-btn" data-act="deselect">完成 ✕</button></div>
+      <p class="hint">拖曳線兩端的圓點可以移動端點；拉到方塊旁邊會自動接上，拉離方塊就會分開。拖曳中間的菱形可以把線拉彎。</p>
+      <label class="field">線上的文字<input type="text" id="f-link-label" placeholder="例如：因為、所以、屬於"></label>
+      <div class="row2">
+        <label class="color-pick">顏色<input type="color" data-lk="color"></label>
+        <label class="field">粗細<input type="range" min="1" max="10" step="1" data-lk="width" data-num="1"></label>
+      </div>
+      <label class="field">線條樣式
+        <select data-lk="dash"><option value="solid">實線</option><option value="dashed">虛線</option><option value="dotted">點線</option></select>
+      </label>
+      <label class="field check"><input type="checkbox" data-lk="arrowStart"> 起點加箭頭</label>
+      <label class="field check"><input type="checkbox" data-lk="arrowEnd"> 終點加箭頭</label>
+      <div class="row2">
+        <button class="pbtn" data-act="link-straight">📏 拉直</button>
+        <button class="pbtn danger" data-act="delete-link">🗑️ 刪除這條線</button>
+      </div>
+    </section>
+  </aside>
+
+  <section id="stage">
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg">
+      <defs id="defs"></defs>
+      <g id="vp">
+        <rect id="grid-rect" x="-50000" y="-50000" width="100000" height="100000" fill="url(#grid-pat)"></rect>
+        <g id="g-lines"></g>
+        <g id="g-links"></g>
+        <g id="g-nodes"></g>
+        <g id="g-ui"></g>
+      </g>
+    </svg>
+    <textarea id="inline-editor" class="hidden"></textarea>
+
+    <div id="draw-banner" class="hidden">✏️ 畫線模式：在畫布上拖曳就能畫線，起點或終點靠近方塊會自動接上 <button data-act="draw-mode">完成</button></div>
+
+    <div id="node-bar" class="hidden">
+      <button data-act="add-child"><span>＋</span>下一層</button>
+      <button data-act="add-sibling"><span>⇊</span>同一層</button>
+      <button data-act="edit-text"><span>✏️</span>改文字</button>
+      <button data-act="toggle-collapse" id="nb-collapse"><span>▸</span>收合</button>
+      <button data-act="delete" class="danger"><span>🗑️</span>刪除</button>
+    </div>
+
+    <div id="corner-left">
+      <button id="btn-panel" data-act="toggle-panel" title="打開／收起設定面板">⚙️ 設定</button>
+      <button id="btn-multi" data-act="multi-mode" title="多選模式">☑️ 多選</button>
+      <button id="btn-draw" data-act="draw-mode" title="畫連結線">✏️ 畫線</button>
+    </div>
+
+    <div id="zoom-ctl">
+      <button data-act="zoom-in" title="放大">＋</button>
+      <span id="zoom-val">100%</span>
+      <button data-act="zoom-out" title="縮小">－</button>
+      <button data-act="fit" title="整張放進畫面">⤢</button>
+    </div>
+  </section>
+</main>
+
+<div id="present-bar" class="hidden">
+  <button data-act="p-prev">◀ 上一步</button>
+  <span id="p-step">1 / 1</span>
+  <button data-act="p-next" class="primary">下一步 ▶</button>
+  <select id="p-order" title="出現順序">
+    <option value="branch">一支一支出現</option>
+    <option value="level">一層一層出現</option>
+  </select>
+  <button data-act="p-all">全部顯示</button>
+  <button data-act="p-reset">從頭開始</button>
+  <button data-act="present-exit" class="danger">✕ 結束投影</button>
+</div>
+<div id="present-tip" class="hidden">點方塊可以打開下一層；點「？」可以看答案</div>
+
+<div id="modal-root"></div>
+<div id="toast-box"></div>
+<div id="print-area"></div>
+<style id="print-page-style"></style>
+<input type="file" id="file-json" accept=".json,application/json" hidden>
+<input type="file" id="file-img" accept="image/*" hidden>
+
+<script src="templates.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
