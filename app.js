@@ -431,7 +431,7 @@ function buildSVG(opts = {}) {
     const n = N(id);
     const b = nodeBox(n);
     const x = PX(n), y = PY(n), w = n.width, h = n.height;
-    const fill = opts.ink ? '#ffffff' : n.fillColor, stroke = opts.mono ? '#334155' : n.borderColor;
+    const fill = opts.clearFill ? 'none' : opts.ink ? '#ffffff' : n.fillColor, stroke = opts.mono ? '#334155' : n.borderColor;
     const fcol = opts.ink && !isDark(n.fontColor) ? '#1e293b' : n.fontColor;
     let shape = '';
     const bw = n.borderWidth ?? 2;
@@ -1707,10 +1707,10 @@ function withAllVisible(fn) { // 匯出時暫時不管收合狀態？保持畫�
   return fn();
 }
 function exportSVGFile() { const s = exportSVGString(); download(safeName(P.name) + '.svg', new Blob([s.str], { type: 'image/svg+xml' })); toast('已匯出 SVG'); }
-function exportImage(fmt, onlySel) {
+function exportImage(fmt, onlySel, clearFill) {
   const only = onlySel ? exportSelectionSet() : null;
   if (onlySel && !only.nodes.size && !only.links.size) { toast('請先選取要存成圖片的方塊或線', 'warn'); return; }
-  const s = exportSVGString({ only, transparent: fmt === 'png' && onlySel });
+  const s = exportSVGString({ only, transparent: fmt === 'png' && onlySel, clearFill: !!clearFill });
   const scale = Math.min(3, 9000 / Math.max(s.w, s.h));
   const img = new Image();
   img.onload = () => {
@@ -2030,6 +2030,7 @@ function ctxItems(hit) {
       I('⚙️', '更多設定…', () => openPanelTo('#f-text')),
       SEP,
       I('🖼️', '選取的存成 PNG（透明背景）', () => exportImage('png', true)),
+      I('🖼️', '選取的存成 PNG（方塊底色也透明）', () => exportImage('png', true, true)),
       I('🖼️', '選取的存成 JPG', () => exportImage('jpg', true)),
       SEP,
       I('🗑️', '刪除', () => deleteSelected(), 'Delete', { off: isRoot && !many, danger: true })
@@ -2057,6 +2058,7 @@ function ctxItems(hit) {
       I('🖌️', '貼上線的樣式', pasteLineStyle, '', { off: !LINE_CLIP }),
       SEP,
       I('🖼️', '選取的存成 PNG（透明背景）', () => exportImage('png', true)),
+      I('🖼️', '選取的存成 PNG（方塊底色也透明）', () => exportImage('png', true, true)),
       I('🖼️', '選取的存成 JPG', () => exportImage('jpg', true)),
       SEP,
       I('🗑️', tree ? '只刪除這條線' : '刪除這條線', () => deleteSelected(), 'Delete', { danger: true })
@@ -2077,7 +2079,7 @@ function ctxItems(hit) {
     I('➖', '收合到第一層', ACTIONS['collapse-all']),
     I('〰️', '找回刪掉的分支線', ACTIONS['show-hidden-lines']),
     SEP,
-    ...(hasSelection() ? [I('🖼️', '選取的存成 PNG（透明背景）', () => exportImage('png', true)), I('🖼️', '選取的存成 JPG', () => exportImage('jpg', true))] : []),
+    ...(hasSelection() ? [I('🖼️', '選取的存成 PNG（透明背景）', () => exportImage('png', true)), I('🖼️', '選取的存成 PNG（方塊底色也透明）', () => exportImage('png', true, true)), I('🖼️', '選取的存成 JPG', () => exportImage('jpg', true))] : []),
     I('🖼️', '整張存成 PNG', exportPNG),
     I('🖼️', '整張存成 JPG', () => exportImage('jpg', false)),
     I('🖨️', '列印／學習單', openPrint)
