@@ -312,3 +312,4 @@ details.howto summary { font-weight: 700; cursor: pointer; }
 
 #g-links [data-link] .hit { cursor: move; }
 .tab button[data-rename] { font-size: 14px; }
+.fill-tr button { min-height: 46px; padding: 0 14px; }
