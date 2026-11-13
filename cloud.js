@@ -273,15 +273,32 @@ async function openCloudList(afterLogin) {
 }
 async function renderCloudList(m) {
   const box = $('#gh-list', m); if (!box) return;
+  // 強制把這台的某張畫布存到雲端（不管之前是不是選了「先不要」或從雲端刪除過）
+  const bindUp = () => $$('[data-gh-up]', box).forEach(b => b.onclick = async () => {
+    const p = state.projects.find(x => x.id === b.dataset.ghUp); if (!p) return;
+    b.disabled = true; b.textContent = '上傳中…';
+    try {
+      const m0 = GH.meta[p.id]; if (m0) { delete m0.skip; delete m0.hash; }
+      while (GH.busy) await new Promise(r => setTimeout(r, 300));
+      GH.busy = true; ghSetStatus('busy');
+      try { await ghUploadOne(p); } finally { GH.busy = false; }
+      ghSetStatus(ghDirtyProjects().length ? 'warn' : 'ok', '還沒上傳');
+      toast(`已把「${p.name}」存到雲端`); renderCloudList(m);
+    } catch (e) { toast(e.status === 401 ? '金鑰失效，請重新登入' : '上傳失敗，請檢查網路再試一次', 'warn'); b.disabled = false; b.textContent = '⬆️ 存到雲端'; }
+  });
   try {
     const list = await ghList();
-    if (!list.length) { box.innerHTML = '<p>雲端上還沒有畫布。這台的畫布有修改時就會自動存上去。</p>'; return; }
-    box.innerHTML = list.map(f => {
+    const localOnly = state.projects.filter(p => !list.some(f => f.id === p.id));
+    const localHtml = localOnly.length ? `<h4 style="margin:14px 0 4px">📱 只在這台裝置、還沒存到雲端的畫布</h4>` + localOnly.map(p => `<div class="cloud-row"><span class="cn">📄 ${esc(p.name || '未命名')}</span><span class="cs">還沒上傳</span>
+        <button class="btn primary" data-gh-up="${esc(p.id)}">⬆️ 存到雲端</button></div>`).join('') : '';
+    if (!list.length) { box.innerHTML = '<p>雲端上還沒有畫布。這台的畫布有修改時就會自動存上去。</p>' + localHtml; bindUp(); return; }
+    box.innerHTML = (localOnly.length ? '<h4 style="margin:4px 0">☁️ 雲端上的畫布</h4>' : '') + list.map(f => {
       const open = state.projects.some(p => p.id === f.id);
       return `<div class="cloud-row"><span class="cn">📄 ${esc(f.name)}</span><span class="cs">${(f.size / 1024).toFixed(0)} KB${open ? '・已開著' : ''}</span>
         <button class="btn" data-gh-open="${esc(f.path)}">${open ? '切換過去' : '打開'}</button>
         <button class="btn" data-gh-del="${esc(f.path)}" title="從雲端刪除">🗑️</button></div>`;
-    }).join('') + (list.some(f => !state.projects.some(p => p.id === f.id)) ? '<div class="actions" style="justify-content:flex-start"><button class="btn" id="gh-openall">全部打開</button></div>' : '');
+    }).join('') + (list.some(f => !state.projects.some(p => p.id === f.id)) ? '<div class="actions" style="justify-content:flex-start"><button class="btn" id="gh-openall">全部打開</button></div>' : '') + localHtml;
+    bindUp();
     $$('[data-gh-open]', box).forEach(b => b.onclick = async () => {
       const f = list.find(x => x.path === b.dataset.ghOpen);
       if (state.projects.some(p => p.id === f.id)) { closeModal(); switchProject(f.id); return; }
