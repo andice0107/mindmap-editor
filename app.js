@@ -389,7 +389,7 @@ function buildSVG(opts = {}) {
     if (!c.parentId || c.hideLine) continue;
     const p = N(c.parentId);
     if (!p || !vis.has(p.id)) continue;
-    if (opts.only && !(opts.only.nodes.has(c.id) && opts.only.nodes.has(p.id))) continue;
+    if (opts.only && !(opts.only.nodes.has(c.id) && opts.only.nodes.has(p.id)) && !opts.only.links.has('T:' + c.id)) continue;
     const st = tlineStyle(p, c);
     const col = opts.mono ? '#334155' : normHex(st.color);
     let attrs = `stroke="${col}" stroke-width="${st.width}" fill="none" stroke-linecap="round"`;
@@ -582,6 +582,14 @@ function uiLayer(vis) {
     }
   }
   selLinks.forEach(id => {
+    if (id.startsWith('T:')) {
+      const c = N(id.slice(2)), p = c && N(c.parentId);
+      if (c && p && vis.has(c.id) && vis.has(p.id) && !c.hideLine) {
+        const st = tlineStyle(p, c), d = treePath(p, c, st.type);
+        s += `<path d="${d}" stroke="#4f46e5" stroke-width="${st.width + 8 / z}" stroke-opacity=".3" fill="none" pointer-events="none"/><path d="${d}" stroke="#4f46e5" stroke-width="${2 / z}" stroke-dasharray="${6 / z},${4 / z}" fill="none" pointer-events="none"/>`;
+      }
+      return;
+    }
     const l = P.links.find(k => k.id === id); if (!l) return;
     if ((l.a.node && !vis.has(l.a.node)) || (l.b.node && !vis.has(l.b.node))) return;
     const g = linkGeom(l);
@@ -877,7 +885,10 @@ function addFreeNode(x, y, size) {
 function deleteSelected(force) {
   if (selLink && selLink.startsWith('T:')) { deleteTreeLine(); return; }
   if (selLinks.size) {
+    let hid = 0;
+    selLinks.forEach(id => { if (id.startsWith('T:') && N(id.slice(2)) && !selNodes.has(id.slice(2))) { N(id.slice(2)).hideLine = true; hid++; } });
     P.links = P.links.filter(l => !selLinks.has(l.id)); selLinks = new Set();
+    if (hid) toast(`已刪除 ${hid} 條分支線（方塊還在）。要找回來：畫布設定裡按「找回刪掉的分支線」`);
     if (!selNodes.size || (selNodes.size === 1 && selNodes.has(P.rootId))) { selNodes = new Set(); render(); commit(); syncPanel(); return; }
   }
   if (selLink) { P.links = P.links.filter(l => l.id !== selLink); selLink = null; render(); commit(); syncPanel(); return; }
@@ -1167,7 +1178,7 @@ function endPointer(e) {
         const now = Date.now();
         if (lastTap.id === g.id && now - lastTap.t < 380) { lastTap = { id: null, t: 0 }; selLinks.clear(), selNodes = new Set([g.id]); render(); syncPanel(); startEdit(g.id); return; }
         lastTap = { id: g.id, t: now };
-        if (g.shift || multiMode) { if (selLink && !selLink.startsWith('T:')) selLinks.add(selLink); selNodes.has(g.id) ? selNodes.delete(g.id) : selNodes.add(g.id); }
+        if (g.shift || multiMode) { if (selLink) selLinks.add(selLink); selNodes.has(g.id) ? selNodes.delete(g.id) : selNodes.add(g.id); }
         else selLinks.clear(), selNodes = new Set([g.id]);
         selLink = null; render(); syncPanel();
       }
@@ -1175,8 +1186,8 @@ function endPointer(e) {
     case 'resize': LAY.delete(g.id); render(); commit(); break;
     case 'toggle': if (!g.moved) toggleCollapse(g.hit.id); break;
     case 'link':
-      if (!g.moved && (g.shift || multiMode) && !g.id.startsWith('T:')) {
-        if (selLink && !selLink.startsWith('T:')) selLinks.add(selLink);
+      if (!g.moved && (g.shift || multiMode)) {
+        if (selLink) selLinks.add(selLink);
         selLink = null;
         selLinks.has(g.id) ? selLinks.delete(g.id) : selLinks.add(g.id);
         render(); syncPanel();
@@ -1283,12 +1294,15 @@ document.addEventListener('keydown', e => {
 function primary() { return selNodes.size ? N([...selNodes][0]) : null; }
 function syncPanel() {
   const n = primary();
-  const l = selLink && P.links.find(k => k.id === selLink);
+  const l = freeSel()[0];
   const tc = selTreeChild();
   $('#sec-canvas').classList.toggle('hidden', !!(n || l || tc));
   $('#sec-node').classList.toggle('hidden', !n);
   $('#sec-link').classList.toggle('hidden', !l);
   $('#sec-tline').classList.toggle('hidden', !tc);
+  { const nt = treeSel().length, nf = freeSel().length;
+    $('#tline-title').textContent = nt > 1 ? `〰️ 一次設定 ${nt} 條分支線` : '〰️ 分支連線設定';
+    $('#link-title').textContent = nf > 1 ? `〰️ 一次設定 ${nf} 條連結線` : '〰️ 連結線設定'; }
   if (tc && N(tc.parentId)) {
     const st = tlineStyle(N(tc.parentId), tc);
     $('#f-tline-label').value = st.label;
@@ -1333,7 +1347,18 @@ function syncPanel() {
   $$('#seg-grid button').forEach(b => b.classList.toggle('on', b.dataset.grid === gridMode()));
   updateChrome();
 }
-function selTreeChild() { return selLink && selLink.startsWith('T:') ? N(selLink.slice(2)) : null; }
+function selTreeChild() { return treeSel()[0] || null; }
+// 目前選到的所有「分支線」(下一層方塊) 與「自由連結線」
+function treeSel() {
+  const ids = new Set(); if (selLink && selLink.startsWith('T:')) ids.add(selLink.slice(2));
+  selLinks.forEach(id => { if (id.startsWith('T:')) ids.add(id.slice(2)); });
+  return [...ids].map(id => N(id)).filter(c => c && c.parentId && N(c.parentId));
+}
+function freeSel() {
+  const ids = new Set(); if (selLink && !selLink.startsWith('T:')) ids.add(selLink);
+  selLinks.forEach(id => { if (!id.startsWith('T:')) ids.add(id); });
+  return P.links.filter(l => ids.has(l.id));
+}
 function eachSel(fn) { selNodes.forEach(id => { const n = N(id); if (n) fn(n); }); }
 function setStyle(k, v) {
   eachSel(n => { n[k] = v; if (['fontSize', 'writingMode', 'shape'].includes(k)) n.customResized = false; });
@@ -1343,11 +1368,11 @@ function setStyle(k, v) {
 $('#panel').addEventListener('input', e => {
   const el = e.target;
   if (el.id === 'f-text') { eachSel(n => { n.text = el.value; n.zyOverride = ''; }); autoLayout(false); render(); commitLater(); return; }
-  if (el.id === 'f-tline-label') { const c = selTreeChild(); if (c) { c.inLine = { ...(c.inLine || {}), label: el.value }; render(); commitLater(); } return; }
-  if (el.dataset.tk && (el.type === 'range' || el.type === 'color')) { const c = selTreeChild(); if (c) { c.inLine = { ...(c.inLine || {}), [el.dataset.tk]: el.dataset.num ? +el.value : el.value }; render(); commitLater(); } return; }
-  if (el.id === 'f-link-label') { const l = P.links.find(k => k.id === selLink); if (l) { l.label = el.value; render(); commitLater(); } return; }
+  if (el.id === 'f-tline-label') { treeSel().forEach(c => { c.inLine = { ...(c.inLine || {}), label: el.value }; }); render(); commitLater(); return; }
+  if (el.dataset.tk && (el.type === 'range' || el.type === 'color')) { treeSel().forEach(c => { c.inLine = { ...(c.inLine || {}), [el.dataset.tk]: el.dataset.num ? +el.value : el.value }; }); render(); commitLater(); return; }
+  if (el.id === 'f-link-label') { freeSel().forEach(l => { l.label = el.value; }); render(); commitLater(); return; }
   if (el.dataset.k && (el.type === 'range' || el.type === 'color')) { const v = el.dataset.num ? +el.value : el.value; eachSel(n => n[el.dataset.k] = v); if (el.dataset.k === 'fontSize') eachSel(n => n.customResized = false); autoLayout(false); render(); commitLater(); return; }
-  if (el.dataset.lk && (el.type === 'range' || el.type === 'color')) { const l = P.links.find(k => k.id === selLink); if (l) { l[el.dataset.lk] = el.dataset.num ? +el.value : el.value; render(); commitLater(); } return; }
+  if (el.dataset.lk && (el.type === 'range' || el.type === 'color')) { freeSel().forEach(l => { l[el.dataset.lk] = el.dataset.num ? +el.value : el.value; }); render(); commitLater(); return; }
   if (el.id === 'canvas-bg') { P.bg = el.value; render(); commitLater(); }
 });
 $('#seg-grid').addEventListener('click', e => {
@@ -1364,12 +1389,10 @@ $('#panel').addEventListener('change', e => {
     setStyle(el.dataset.k, v); return;
   }
   if (el.dataset.tk && el.type !== 'range' && el.type !== 'color') {
-    const c = selTreeChild(); if (!c) return;
-    c.inLine = { ...(c.inLine || {}), [el.dataset.tk]: el.type === 'checkbox' ? el.checked : el.value }; render(); commit(); return;
+    treeSel().forEach(c => { c.inLine = { ...(c.inLine || {}), [el.dataset.tk]: el.type === 'checkbox' ? el.checked : el.value }; }); render(); commit(); return;
   }
   if (el.dataset.lk && el.type !== 'range' && el.type !== 'color') {
-    const l = P.links.find(k => k.id === selLink); if (!l) return;
-    l[el.dataset.lk] = el.type === 'checkbox' ? el.checked : el.value; render(); commit(); return;
+    freeSel().forEach(l => { l[el.dataset.lk] = el.type === 'checkbox' ? el.checked : el.value; }); render(); commit(); return;
   }
 });
 let commitTimer = null;
@@ -1423,7 +1446,7 @@ const ACTIONS = {
   'draw-mode': () => toggleDraw(),
   'box-mode': () => toggleBox(),
   'exit-mode': () => { drawMode = false; boxMode = false; render(); },
-  'multi-mode': () => { multiMode = !multiMode; updateChrome(); toast(multiMode ? '多選模式：點方塊就能一次選很多個' : '已關閉多選模式'); },
+  'multi-mode': () => { multiMode = !multiMode; updateChrome(); toast(multiMode ? '多選模式：點方塊或線條就能一次選很多個' : '已關閉多選模式'); },
   'toggle-panel': () => { document.body.classList.toggle('panel-closed'); },
   deselect: () => { (selNodes.clear(), selLinks.clear()); selLink = null; render(); syncPanel(); },
   'add-child': () => { const n = primary(); if (n) addChild(n.id); },
@@ -1448,11 +1471,11 @@ const ACTIONS = {
   },
   'flip-side': () => { const n = primary(); if (!n) return; n.side = n.side === 'left' ? 'right' : 'left'; n.offsetX = 0; n.offsetY = 0; descendants(n.id).forEach(d => { N(d).offsetX = 0; N(d).offsetY = 0; }); layoutAndRender(); commit(); },
   'tline-delete': () => deleteTreeLine(),
-  'tline-reset': () => { const c = selTreeChild(); if (c) { delete c.inLine; render(); commit(); syncPanel(); } },
+  'tline-reset': () => { treeSel().forEach(c => { delete c.inLine; }); render(); commit(); syncPanel(); },
   'tline-all-siblings': () => { const c = selTreeChild(); if (!c) return; const p = N(c.parentId); p.children.forEach(id => { if (N(id)) N(id).inLine = clone(c.inLine || {}); }); render(); commit(); toast('同一個方塊底下的連線都換成一樣了'); },
   'tline-detach': () => { const c = selTreeChild(); if (!c) return; selLink = null; selLinks.clear(), selNodes = new Set([c.id]); ACTIONS['detach-node'](); },
   'show-hidden-lines': () => { let k = 0; for (const id in P.nodes) if (P.nodes[id].hideLine) { P.nodes[id].hideLine = false; k++; } render(); commit(); toast(k ? `找回了 ${k} 條連線` : '沒有被刪除的連線'); },
-  'link-straight': () => { const l = P.links.find(k => k.id === selLink); if (l) { l.bend = null; render(); commit(); } },
+  'link-straight': () => { freeSel().forEach(l => { l.bend = null; }); render(); commit(); },
   'delete-link': () => { P.links = P.links.filter(l => l.id !== selLink); selLink = null; render(); commit(); syncPanel(); },
   'p-next': () => presentStep(1), 'p-prev': () => presentStep(-1),
   'p-all': () => presentAll(), 'p-reset': () => presentGoto(0), 'present-exit': () => exitPresent()
@@ -1665,18 +1688,18 @@ function exportSVGString(opts = {}) {
 // 選取範圍：選到的方塊 + 選到的線 + 兩端都在選取方塊上的線
 function exportSelectionSet() {
   const nodes = new Set(selNodes), links = new Set(selLinks);
-  if (selLink && !selLink.startsWith('T:')) links.add(selLink);
+  if (selLink) links.add(selLink);
   const vis = visibleSet();
   P.links.forEach(l => { if (l.a.node && l.b.node && nodes.has(l.a.node) && nodes.has(l.b.node)) links.add(l.id); });
-  [...links].forEach(id => { const l = P.links.find(k => k.id === id); if (!l || (l.a.node && !vis.has(l.a.node)) || (l.b.node && !vis.has(l.b.node))) links.delete(id); });
+  [...links].forEach(id => { if (id.startsWith('T:')) return; const l = P.links.find(k => k.id === id); if (!l || (l.a.node && !vis.has(l.a.node)) || (l.b.node && !vis.has(l.b.node))) links.delete(id); });
   return { nodes, links };
 }
-function hasSelection() { return selNodes.size > 0 || selLinks.size > 0 || (selLink && !selLink.startsWith('T:')); }
+function hasSelection() { return selNodes.size > 0 || selLinks.size > 0 || !!selLink; }
 function onlyBounds(only) {
   let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
   const add = (x, y) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); };
   only.nodes.forEach(id => { const n = N(id); if (!n) return; const r = nodeRect(n); add(r.x, r.y); add(r.x + r.w, r.y + r.h); });
-  only.links.forEach(id => { const l = P.links.find(k => k.id === id); if (!l) return; const g = linkGeom(l); [g.A, g.B, g.M].forEach(p => add(p.x, p.y)); if (l.label) { add(g.M.x - 60, g.M.y - 16); add(g.M.x + 60, g.M.y + 16); } });
+  only.links.forEach(id => { if (id.startsWith('T:')) { const c = N(id.slice(2)), p = c && N(c.parentId); if (c && p) { const e = treeEnds(p, c); add(e.sx, e.py); add(e.ex, e.cy); } return; } const l = P.links.find(k => k.id === id); if (!l) return; const g = linkGeom(l); [g.A, g.B, g.M].forEach(p => add(p.x, p.y)); if (l.label) { add(g.M.x - 60, g.M.y - 16); add(g.M.x + 60, g.M.y + 16); } });
   if (x1 === Infinity) return { x: -100, y: -50, w: 200, h: 100 };
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
@@ -1951,16 +1974,15 @@ function moveSibling(id, dir) {
 function copyStyle() { const n = primary(); if (!n) return; STYLE_CLIP = {}; STYLE_KEYS.forEach(k => STYLE_CLIP[k] = n[k]); toast('已複製樣式，到別的方塊按「貼上樣式」'); }
 function pasteStyle() { if (!STYLE_CLIP) { toast('還沒有複製樣式'); return; } eachSel(n => { Object.assign(n, clone(STYLE_CLIP)); n.customResized = false; }); LAY.clear(); layoutAndRender(); commit(); syncPanel(); }
 function copyLineStyle() {
-  const c = selTreeChild(), l = selLink && P.links.find(k => k.id === selLink);
+  const c = selTreeChild(), l = freeSel()[0];
   if (c) { const st = tlineStyle(N(c.parentId), c); LINE_CLIP = { color: st.color, width: st.width, dash: st.dash, arrowEnd: st.arrowEnd }; }
   else if (l) LINE_CLIP = { color: l.color, width: l.width, dash: l.dash, arrowEnd: l.arrowEnd, arrowStart: l.arrowStart };
   toast('已複製線的樣式');
 }
 function pasteLineStyle() {
   if (!LINE_CLIP) { toast('還沒有複製線的樣式'); return; }
-  const c = selTreeChild(), l = selLink && P.links.find(k => k.id === selLink);
-  if (c) c.inLine = { ...(c.inLine || {}), color: LINE_CLIP.color, width: LINE_CLIP.width, dash: LINE_CLIP.dash, arrowEnd: LINE_CLIP.arrowEnd };
-  else if (l) Object.assign(l, clone(LINE_CLIP));
+  treeSel().forEach(c => { c.inLine = { ...(c.inLine || {}), color: LINE_CLIP.color, width: LINE_CLIP.width, dash: LINE_CLIP.dash, arrowEnd: LINE_CLIP.arrowEnd }; });
+  freeSel().forEach(l => Object.assign(l, clone(LINE_CLIP)));
   render(); commit(); syncPanel();
 }
 function openPanelTo(sel) {
@@ -2065,6 +2087,7 @@ function selectAll() {
   const vis = visibleSet();
   selNodes = new Set(vis); selLink = null;
   selLinks = new Set(P.links.filter(l => (!l.a.node || vis.has(l.a.node)) && (!l.b.node || vis.has(l.b.node))).map(l => l.id));
+  vis.forEach(id => { const c = N(id); if (c.parentId && !c.hideLine && vis.has(c.parentId)) selLinks.add('T:' + id); });
   render(); syncPanel();
 }
 function openCtx(hit, cx, cy) {
