@@ -690,7 +690,7 @@ function addProject(p, keepOffsets) {
 }
 function closeProject(id) {
   const p = state.projects.find(x => x.id === id);
-  confirmBox(`要關閉「${esc(p.name)}」這張畫布嗎？`, '關閉後就不會再自動保留。如果之後還要用，請先按「存成檔案」備份。', '關閉畫布', () => {
+  confirmBox(`要關閉「${esc(p.name)}」這張畫布嗎？`, (typeof GH !== 'undefined' && GH.cfg && GH.meta[id] && !GH.meta[id].skip) ? '只是從這台裝置的分頁關掉，雲端上的那份還在，之後可以在「☁️ 雲端專案」再打開。' : '關閉後就不會再自動保留。如果之後還要用，請先按「存成檔案」備份。', '關閉畫布', () => {
     state.projects = state.projects.filter(x => x.id !== id);
     if (!state.projects.length) state.projects.push(buildFromTree(MM_TEMPLATES[0].tree));
     if (state.activeId === id) { P = null; switchProject(state.projects[0].id); }
