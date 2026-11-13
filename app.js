@@ -610,8 +610,9 @@ function fitView(animate, ids) {
   const b = contentBounds(ids || visibleSet());
   const r = stageRect();
   const bottom = presenting ? 110 : 90, top = presenting ? 50 : 30;
-  const z = clamp(Math.min((r.width - 60) / b.w, (r.height - top - bottom) / b.h), 0.15, presenting ? 2.2 : 1.4);
-  const target = { z, x: r.width / 2 - (b.x + b.w / 2) * z, y: top + (r.height - top - bottom) / 2 - (b.y + b.h / 2) * z };
+  const left = presenting ? 30 : 120, right = presenting ? 30 : 80;
+  const z = clamp(Math.min((r.width - left - right) / b.w, (r.height - top - bottom) / b.h), 0.15, presenting ? 2.2 : 1.4);
+  const target = { z, x: left + (r.width - left - right) / 2 - (b.x + b.w / 2) * z, y: top + (r.height - top - bottom) / 2 - (b.y + b.h / 2) * z };
   if (!animate) { view = target; render(); return; }
   const from = { ...view }, t0 = performance.now(), my = ++animId;
   const step = t => {
@@ -680,6 +681,7 @@ function switchProject(id) {
   autoLayout(false); resetHistory(); renderTabs(); syncPanel(); fitView(false); scheduleSave();
 }
 function addProject(p, keepOffsets) {
+  if (Object.values(p.nodes).some(n => n.zhuyin)) loadZhuyin();
   state.projects.push(p);
   state.activeId = p.id; P = p;
   selNodes.clear(); selLink = null; LAY.clear();
@@ -1400,11 +1402,8 @@ $('#file-json').addEventListener('change', e => {
   const rd = new FileReader();
   rd.onload = () => {
     try {
-      const d = JSON.parse(rd.result);
-      let p;
-      if (d && d.app === 'mindmap-editor' && d.project) { p = d.project; p.id = uid('p'); p.links = p.links || []; addProject(p, true); }
-      else if (d && d.root) { p = fromOldNodes(d, f.name.replace(/\.json$/i, '')); addProject(p, true); layoutAndRender(); }
-      else throw new Error('format');
+      const d = JSON.parse(rd.result.replace(/^\uFEFF/, ''));
+      importData(d, f.name.replace(/\.json$/i, ''));
       toast('已在新分頁打開檔案');
     } catch (err) { toast('這個檔案打不開，請確認是心智圖存下來的 .json 檔', 'warn'); }
   };
