@@ -309,3 +309,6 @@ body.presenting #zoom-ctl { bottom: 96px; }
 details.howto { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: var(--soft); }
 details.howto summary { font-weight: 700; cursor: pointer; }
 .help a { color: var(--pri); word-break: break-all; }
+
+#g-links [data-link] .hit { cursor: move; }
+.tab button[data-rename] { font-size: 14px; }
