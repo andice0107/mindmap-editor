@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=LXGW+WenKai+TC:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=4">
+<link rel="stylesheet" href="app.css?v=5">
 </head>
 <body>
 
@@ -17,13 +17,14 @@
     <span class="logo">🧠</span>
     <div class="brand-text">
       <div id="title-text">Andice的心智圖工具</div>
-      <div id="save-state">✓ 已自動儲存</div>
+      <div class="state-line"><span id="save-state">✓ 已自動儲存</span> <span id="cloud-state"></span></div>
     </div>
   </div>
   <div class="tools">
     <button class="tb" id="btn-undo" data-act="undo" title="復原 (Ctrl+Z)"><span class="ic">↶</span><span class="lb">復原</span></button>
     <button class="tb" id="btn-redo" data-act="redo" title="重做 (Ctrl+Y)"><span class="ic">↷</span><span class="lb">重做</span></button>
     <span class="sep"></span>
+    <button class="tb" id="btn-cloud" data-act="cloud"><span class="ic">☁️</span><span class="lb">登入GitHub</span></button>
     <button class="tb" data-act="new-canvas"><span class="ic">📄</span><span class="lb">新增畫布</span></button>
     <button class="tb" data-act="open-file"><span class="ic">📂</span><span class="lb">開啟檔案</span></button>
     <button class="tb" data-act="save-file"><span class="ic">💾</span><span class="lb">存成檔案</span></button>
@@ -291,7 +292,8 @@
 <input type="file" id="file-img" accept="image/*" hidden>
 
 <script src="templates.js?v=2"></script>
-<script src="app.js?v=4"></script>
-<script src="ai.js?v=1"></script>
+<script src="app.js?v=5"></script>
+<script src="ai.js?v=2"></script>
+<script src="cloud.js?v=1"></script>
 </body>
 </html>

@@ -1907,8 +1907,8 @@ function init() {
   if (window.innerWidth < 900) document.body.classList.add('panel-closed');
   const had = load();
   if (!had) {
-    const p = buildFromTree(MM_TEMPLATES.find(t => t.id === 'zhiqing').tree);
-    p.palette = uiTheme === 'warm' ? 'warm' : 'indigo';
+    const p = buildFromTree(MM_TEMPLATES.find(t => t.id === 'brainstorm').tree);
+    p.palette = uiTheme === 'warm' ? 'warm' : 'rainbow';
     state.projects = [p]; state.activeId = p.id;
   }
   P = state.projects.find(p => p.id === state.activeId);
