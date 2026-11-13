@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=LXGW+WenKai+TC:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=2">
+<link rel="stylesheet" href="app.css?v=3">
 </head>
 <body>
 
@@ -65,6 +65,7 @@
         <button class="pbtn" data-act="fit">🔍 整張放進畫面</button>
         <button class="pbtn" data-act="expand-all">➕ 全部展開</button>
         <button class="pbtn" data-act="collapse-all">➖ 收合到第一層</button>
+        <button class="pbtn" data-act="show-hidden-lines">〰️ 找回刪掉的分支線</button>
       </div>
 
       <h3>🖼️ 畫布</h3>
@@ -180,6 +181,32 @@
       </div>
     </section>
 
+    <!-- 選了分支連線 -->
+    <section id="sec-tline" class="psec hidden">
+      <div class="sec-head"><h3>〰️ 分支連線設定</h3><button class="link-btn" data-act="deselect">完成 ✕</button></div>
+      <p class="hint">這條線連著上一層和下一層的方塊。這裡的設定只會改這一條線。</p>
+      <label class="field">線上的文字<input type="text" id="f-tline-label" placeholder="例如：包含、例如"></label>
+      <div class="row2">
+        <label class="color-pick">顏色<input type="color" data-tk="color"></label>
+        <label class="field">粗細<input type="range" min="1" max="10" step="1" data-tk="width" data-num="1"></label>
+      </div>
+      <div class="row2">
+        <label class="field">樣子
+          <select data-tk="type"><option value="curve">彎曲線</option><option value="elbow">直角折線</option><option value="straight">直線</option></select>
+        </label>
+        <label class="field">線條樣式
+          <select data-tk="dash"><option value="solid">實線</option><option value="dashed">虛線</option><option value="dotted">點線</option></select>
+        </label>
+      </div>
+      <label class="field check"><input type="checkbox" data-tk="arrowEnd"> 尾端加箭頭</label>
+      <div class="row2">
+        <button class="pbtn" data-act="tline-all-siblings">👯 同層的線都套用</button>
+        <button class="pbtn" data-act="tline-reset">↺ 恢復預設樣式</button>
+        <button class="pbtn" data-act="tline-detach">✂️ 斷開（變獨立方塊）</button>
+        <button class="pbtn danger" data-act="tline-delete">🗑️ 只刪除這條線</button>
+      </div>
+    </section>
+
     <!-- 選了連結線 -->
     <section id="sec-link" class="psec hidden">
       <div class="sec-head"><h3>〰️ 連結線設定</h3><button class="link-btn" data-act="deselect">完成 ✕</button></div>
@@ -262,6 +289,6 @@
 <input type="file" id="file-img" accept="image/*" hidden>
 
 <script src="templates.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
