@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>心智圖編輯器</title>
+<title>Andice的心智圖工具</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=LXGW+WenKai+TC:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=1">
+<link rel="stylesheet" href="app.css?v=2">
 </head>
 <body>
 
@@ -16,7 +16,7 @@
   <div class="brand">
     <span class="logo">🧠</span>
     <div class="brand-text">
-      <div id="title-text">心智圖</div>
+      <div id="title-text">Andice的心智圖工具</div>
       <div id="save-state">✓ 已自動儲存</div>
     </div>
   </div>
@@ -73,10 +73,10 @@
 
       <h3>➕ 新增</h3>
       <div class="row2">
-        <button class="pbtn" data-act="add-free-node">🔲 獨立方塊</button>
+        <button class="pbtn" data-act="box-mode">⬭ 畫框</button>
         <button class="pbtn" data-act="draw-mode">✏️ 畫連結線</button>
       </div>
-      <p class="hint">「獨立方塊」不屬於任何分支，可以放在畫布任何地方，再用連結線接起來。</p>
+      <p class="hint">「畫框」畫出的膠囊框不屬於任何分支，可以放在畫布任何地方，再用連結線接起來。</p>
 
       <h3>📋 範本</h3>
       <button class="pbtn wide" data-act="new-canvas">開新畫布並選擇範本</button>
@@ -214,7 +214,7 @@
     </svg>
     <textarea id="inline-editor" class="hidden"></textarea>
 
-    <div id="draw-banner" class="hidden">✏️ 畫線模式：在畫布上拖曳就能畫線，起點或終點靠近方塊會自動接上 <button data-act="draw-mode">完成</button></div>
+    <div id="draw-banner" class="hidden"><span id="draw-text"></span> <button data-act="exit-mode">完成</button></div>
 
     <div id="node-bar" class="hidden">
       <button data-act="add-child"><span>＋</span>下一層</button>
@@ -228,6 +228,7 @@
       <button id="btn-panel" data-act="toggle-panel" title="打開／收起設定面板">⚙️ 設定</button>
       <button id="btn-multi" data-act="multi-mode" title="多選模式">☑️ 多選</button>
       <button id="btn-draw" data-act="draw-mode" title="畫連結線">✏️ 畫線</button>
+      <button id="btn-box" data-act="box-mode" title="畫一個膠囊形的框">⬭ 畫框</button>
     </div>
 
     <div id="zoom-ctl">
@@ -260,7 +261,7 @@
 <input type="file" id="file-json" accept=".json,application/json" hidden>
 <input type="file" id="file-img" accept="image/*" hidden>
 
-<script src="templates.js?v=1"></script>
-<script src="app.js?v=1"></script>
+<script src="templates.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
