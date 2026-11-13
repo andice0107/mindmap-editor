@@ -10,6 +10,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const STORE_KEY = 'mindmap-editor-v2';
+const APP_NAME = 'Andice的心智圖工具';
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = (p = 'n') => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -82,7 +83,7 @@ let P = null;                 // 目前畫布
 let selNodes = new Set();     // 選取的方塊
 let selLink = null;           // 選取的連結線 id
 let view = { x: 0, y: 0, z: 1 };
-let drawMode = false, multiMode = false;
+let drawMode = false, multiMode = false, boxMode = false;
 let presenting = false, pState = null;
 let hist = [], hi = -1;
 const LAY = new Map();        // 文字排版快取（不存檔）
@@ -518,6 +519,10 @@ function uiLayer(vis) {
     const n = N(gesture.snapNode);
     if (n) { const r = nodeRect(n), pad = 10 / z; s += `<rect x="${r.x - pad}" y="${r.y - pad}" width="${r.w + pad * 2}" height="${r.h + pad * 2}" rx="${14 / z}" fill="#10b98122" stroke="#10b981" stroke-width="${3 / z}" pointer-events="none"/>`; }
   }
+  if (gesture && gesture.type === 'box' && gesture.preview) {
+    const b = gesture.preview;
+    s += `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${b.h / 2}" fill="#4f46e522" stroke="#4f46e5" stroke-width="${3 / z}" stroke-dasharray="${8 / z},${6 / z}" pointer-events="none"/>`;
+  }
   if (gesture && gesture.type === 'draw' && gesture.preview) {
     const { A, B } = gesture.preview;
     s += `<path d="M${A.x},${A.y} L${B.x},${B.y}" stroke="#4f46e5" stroke-width="${3 / z}" stroke-dasharray="${8 / z},${6 / z}" fill="none" pointer-events="none"/>`;
@@ -534,8 +539,7 @@ function updateChrome() {
   const r = root();
   const name = r ? r.text.split('\n')[0] : P.name;
   if (name && P.name !== name) { P.name = name; renderTabs(); }
-  $('#title-text').textContent = P.name;
-  document.title = P.name + '｜心智圖編輯器';
+  document.title = APP_NAME;
   $('#btn-undo').disabled = hi <= 0;
   $('#btn-redo').disabled = hi >= hist.length - 1;
   const one = selNodes.size >= 1 && !presenting && !drawMode;
@@ -546,10 +550,12 @@ function updateChrome() {
     $('#nb-collapse').classList.toggle('hidden', !has);
     if (has) $('#nb-collapse').innerHTML = n.isCollapsed ? '<span>▸</span>展開' : '<span>▾</span>收合';
   }
-  $('#draw-banner').classList.toggle('hidden', !drawMode || presenting);
+  $('#draw-banner').classList.toggle('hidden', !(drawMode || boxMode) || presenting);
+  $('#draw-text').textContent = boxMode ? '▢ 畫框模式：在畫布上點一下放一個框，或拖曳畫出想要的大小' : '✏️ 畫線模式：在畫布上拖曳就能畫線，起點或終點靠近方塊會自動接上';
   $('#btn-draw').classList.toggle('on', drawMode);
+  $('#btn-box').classList.toggle('on', boxMode);
   $('#btn-multi').classList.toggle('on', multiMode);
-  svg.classList.toggle('draw', drawMode);
+  svg.classList.toggle('draw', drawMode || boxMode);
 }
 
 /* ---------------- 視角 ---------------- */
@@ -753,10 +759,11 @@ function layoutFreeSubtree(f) {
   let y = PY(f) - total / 2;
   kids.forEach(c => { const n = N(c); n.side = 'right'; n.x = PX(f) + f.width / 2 + 60 + n.width / 2 - (n.offsetX || 0); n.y = y + n.height / 2; n.offsetY = 0; y += n.height + 18; layoutFreeSubtree(n); });
 }
-function addFreeNode(x, y) {
+function addFreeNode(x, y, size) {
   if (x == null) { const r = stageRect(); const c = toWorld(r.left + r.width / 2, r.top + r.height / 2); x = c.x; y = c.y - 120; }
   const n = makeNode('獨立方塊', null, 'free', 1);
-  Object.assign(n, { x, y, borderColor: '#0ea5e9', fillColor: tintFill('#0ea5e9', 1), lineColor: '#0ea5e9', fontColor: textCol() });
+  Object.assign(n, { x, y, shape: 'capsule', text: '新的框', borderColor: '#0ea5e9', fillColor: tintFill('#0ea5e9', 1), lineColor: '#0ea5e9', fontColor: textCol() });
+  if (size) { n.customResized = true; n.width = Math.round(size.w); n.height = Math.round(size.h); }
   P.nodes[n.id] = n; nodeBox(n);
   selNodes = new Set([n.id]); selLink = null;
   render(); commit(); syncPanel();
@@ -886,6 +893,7 @@ svg.addEventListener('pointerdown', e => {
     gesture = { ...base, type: 'handle', link: l, key: hit.key, orig: clone(l) };
     return;
   }
+  if (boxMode) { gesture = { ...base, type: 'box' }; return; }
   if (drawMode) {
     const start = nodeAt(w.x, w.y, SNAP());
     gesture = { ...base, type: 'draw', startNode: start, startPt: w };
@@ -955,6 +963,9 @@ svg.addEventListener('pointermove', e => {
       gesture.preview = { A: gesture.startNode ? clipToBox(N(gesture.startNode), w.x, w.y) : A, B: w };
       requestRender(); break;
     }
+    case 'box':
+      gesture.preview = { x: Math.min(gesture.w0.x, w.x), y: Math.min(gesture.w0.y, w.y), w: Math.abs(w.x - gesture.w0.x), h: Math.abs(w.y - gesture.w0.y) };
+      requestRender(); break;
     case 'link': case 'toggle':
       gesture.type = 'pan'; gesture.vx = view.x - dx; gesture.vy = view.y - dy; break;
   }
@@ -994,6 +1005,13 @@ function endPointer(e) {
       if (g.key !== 'm' && g.snapNode) { l[g.key] = { node: g.snapNode, x: 0, y: 0 }; }
       render(); commit(); syncPanel();
       if (g.key !== 'm' && g.moved) toast(g.snapNode ? '已接到方塊上' : '端點已和方塊分開');
+      break;
+    }
+    case 'box': {
+      const pv = g.moved && g.preview && g.preview.w > 40 && g.preview.h > 24 ? g.preview : null;
+      boxMode = false;
+      if (pv) addFreeNode(pv.x + pv.w / 2, pv.y + pv.h / 2, { w: pv.w, h: pv.h });
+      else addFreeNode(w.x, w.y);
       break;
     }
     case 'draw': {
@@ -1056,7 +1074,7 @@ document.addEventListener('keydown', e => {
   if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveNow(); exportJSON(); return; }
-  if (e.key === 'Escape') { if (drawMode) toggleDraw(false); selNodes.clear(); selLink = null; render(); syncPanel(); return; }
+  if (e.key === 'Escape') { if (drawMode) toggleDraw(false); if (boxMode) toggleBox(false); selNodes.clear(); selLink = null; render(); syncPanel(); return; }
   const one = selNodes.size === 1 ? [...selNodes][0] : null;
   if (e.key === 'Tab' && one) { e.preventDefault(); addChild(one); }
   else if (e.key === 'Enter' && one) { e.preventDefault(); addSibling(one); }
@@ -1182,6 +1200,8 @@ const ACTIONS = {
   'collapse-all': () => { root().children.forEach(c => { if (N(c) && N(c).children.length) N(c).isCollapsed = true; }); selNodes.clear(); layoutAndRender(); commit(); syncPanel(); fitView(true); },
   'add-free-node': () => addFreeNode(),
   'draw-mode': () => toggleDraw(),
+  'box-mode': () => toggleBox(),
+  'exit-mode': () => { drawMode = false; boxMode = false; render(); },
   'multi-mode': () => { multiMode = !multiMode; updateChrome(); toast(multiMode ? '多選模式：點方塊就能一次選很多個' : '已關閉多選模式'); },
   'toggle-panel': () => { document.body.classList.toggle('panel-closed'); },
   deselect: () => { selNodes.clear(); selLink = null; render(); syncPanel(); },
@@ -1237,8 +1257,14 @@ $('#tab-list').addEventListener('dblclick', e => {
   });
 });
 function closeMenus() { $$('.menu.open').forEach(m => m.classList.remove('open')); }
+function toggleBox(on) {
+  boxMode = on === undefined ? !boxMode : on;
+  if (boxMode) { drawMode = false; selNodes.clear(); selLink = null; syncPanel(); }
+  render();
+}
 function toggleDraw(on) {
   drawMode = on === undefined ? !drawMode : on;
+  if (drawMode) boxMode = false;
   if (drawMode) { selNodes.clear(); syncPanel(); }
   render();
 }
@@ -1477,7 +1503,7 @@ function presentGroups(order) {
   return groups;
 }
 function startPresent() {
-  finishEdit(); toggleDraw(false);
+  finishEdit(); toggleDraw(false); boxMode = false;
   presenting = true;
   for (const id in P.nodes) P.nodes[id]._wasCollapsed = P.nodes[id].isCollapsed, P.nodes[id].isCollapsed = false;
   autoLayout(false);
@@ -1535,6 +1561,7 @@ function openHelp() {
     <li>按左上角「✏️ 畫線」，在畫布上拖曳就能畫線。從方塊上開始畫，或拖到方塊旁邊，就會自動接上。</li>
     <li>點一下線就能選取：拖曳兩端圓點移動端點（綠色表示已接在方塊上，拉離方塊就分開），拖曳中間黃色菱形可以把線拉彎。</li>
     <li>線上可以加文字，例如「因為」「所以」。</li>
+    <li>按左上角「⬭ 畫框」，在畫布上點一下就放一個膠囊形的框，或拖曳畫出想要的大小；框可以放在任何地方，再用連結線接起來。</li>
   </ul>
   <h3>上課好用</h3><ul>
     <li><b>📺 上課投影</b>：畫面放大，一支一支（或一層一層）出現；點方塊可以打開下一層，勾了「挖空」的方塊會顯示「？」，點一下才看到答案。鍵盤 → 下一步、← 上一步。</li>
