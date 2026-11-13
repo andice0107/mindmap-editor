@@ -289,3 +289,10 @@ body.presenting #zoom-ctl { bottom: 96px; }
 #ctx-menu .cm-lb { flex: 1; }
 #ctx-menu .cm-key { font-size: 12px; color: var(--muted); }
 #ctx-menu .cm-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+
+/* ---------- AI 協作 ---------- */
+.ai-guide .steps { margin: 0; padding-left: 24px; line-height: 1.8; }
+.ai-guide .steps li { margin-bottom: 6px; }
+.ai-guide .say { display: inline-block; margin-top: 4px; background: var(--pri-soft); border-radius: 10px; padding: 6px 12px; font-size: 15px; }
+.ai-guide textarea.code { min-height: 140px; }
+@media (max-width: 1280px) { .tb { min-width: 56px; padding: 4px 6px; font-size: 13px; } }

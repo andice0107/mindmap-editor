@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=LXGW+WenKai+TC:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=3">
+<link rel="stylesheet" href="app.css?v=4">
 </head>
 <body>
 
@@ -37,6 +37,8 @@
         <button data-act="export-mermaid">🧩 Mermaid 語法</button>
       </div>
     </div>
+    <button class="tb" data-act="ai-guide"><span class="ic">🤝</span><span class="lb">AI協作需知</span></button>
+    <button class="tb" data-act="ai-prompt"><span class="ic">📜</span><span class="lb">給AI的提示詞</span></button>
     <button class="tb" data-act="print"><span class="ic">🖨️</span><span class="lb">列印／學習單</span></button>
     <button class="tb primary" data-act="present"><span class="ic">📺</span><span class="lb">上課投影</span></button>
     <button class="tb" data-act="help"><span class="ic">❓</span><span class="lb">說明</span></button>
@@ -289,6 +291,7 @@
 <input type="file" id="file-img" accept="image/*" hidden>
 
 <script src="templates.js?v=2"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
+<script src="ai.js?v=1"></script>
 </body>
 </html>
